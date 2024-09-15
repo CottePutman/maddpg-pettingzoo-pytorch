@@ -30,37 +30,59 @@ class MADDPG:
 
     def __init__(self, dim_info, capacity, batch_size, actor_lr, critic_lr, res_dir):
         # sum all the dims of each agent to get input dim for critic
-        global_obs_act_dim = sum(sum(val) for val in dim_info.values())
+        # global_obs_act_dim = sum(sum(val) for val in dim_info.values())
+        # 调用np.prod()对多维值进行相乘操作
+        global_obs_act_dim = sum(np.prod(val[0]) for val in dim_info.values()) + sum(val[1] for val in dim_info.values())
         # create Agent(actor-critic) and replay buffer for each agent
         self.agents = {}
         self.buffers = {}
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # self.device = 'cpu'
         for agent_id, (obs_dim, act_dim) in dim_info.items():
-            self.agents[agent_id] = Agent(obs_dim, act_dim, global_obs_act_dim, actor_lr, critic_lr)
-            self.buffers[agent_id] = Buffer(capacity, obs_dim, act_dim, 'cpu')
+            self.agents[agent_id] = Agent(obs_dim, act_dim, global_obs_act_dim, actor_lr, critic_lr, self.device)
+            self.buffers[agent_id] = Buffer(capacity, obs_dim, act_dim, self.device)
         self.dim_info = dim_info
 
         self.batch_size = batch_size
         self.res_dir = res_dir  # directory to save the training result
         self.logger = setup_logger(os.path.join(res_dir, 'maddpg.log'))
 
-    def add(self, obs, action, reward, next_obs, done):
+    def add(self, observations, actions, rewards, next_observations, truncations, terminations):
         # NOTE that the experience is a dict with agent name as its key
-        for agent_id in obs.keys():
-            o = obs[agent_id]
-            a = action[agent_id]
-            if isinstance(a, int):
-                # the action from env.action_space.sample() is int, we have to convert it to onehot
-                a = np.eye(self.dim_info[agent_id][1])[a]
+        for agent_id in actions.keys():
+            # 终止/超时检测
+            # 代理死亡时，其信息不会再被包含在env.reset()的返回值中，
+            # 而obs本质上是上一步的观察值，即代理死亡前的观察值，因而仍然包含有相关信息
+            # 但actions, rewards, next_observations, terminations和truncations中并不包含相关键值
+            # 在下一次被调用时，将不会再出现死亡的agent_id
+            # TODO 如何处理代理提前终止时的信用分配问题，先用吸收态凑合一下？
+            # 先改为使用actions的键值进行检索
+            # if agent_id not in terminations.keys() or agent_id not in truncations.keys():
+            #     # self.buffers[agent_id].add(obs, 0, 0, obs, True, True)
+            #     continue
+            
+            obs = observations[agent_id]
+            action = actions[agent_id]
 
-            r = reward[agent_id]
-            next_o = next_obs[agent_id]
-            d = done[agent_id]
-            self.buffers[agent_id].add(o, a, r, next_o, d)
+            # 此处转换为都热编码的操作似乎没有任何意义，而且后续管线并不支持对多维向量的处理
+            # Ensure action is always treated as an int64, even if int is returned
+            # if isinstance(action, int):
+            #     # the action from env.action_space.sample() is int, we have to convert it to onehot
+            #     # Convert action to int64 before converting to one-hot
+            #     action = np.eye(self.dim_info[agent_id][1])[np.int64(action)]
+            # elif isinstance(action, np.int64):
+            #     action = np.eye(self.dim_info[agent_id][1])[action]
+            
+            reward = rewards[agent_id]
+            next_obs = next_observations[agent_id]
+            truncation = truncations[agent_id]
+            termination = terminations[agent_id]
+            self.buffers[agent_id].add(obs, action, reward, next_obs, truncation, termination)
 
     def sample(self, batch_size):
         """sample experience from all the agents' buffers, and collect data for network input"""
         # get the total num of transitions, these buffers should have same number of transitions
-        total_num = len(self.buffers['agent_0'])
+        total_num = len(self.buffers[next(iter(self.agents))])
         indices = np.random.choice(total_num, size=batch_size, replace=False)
 
         # NOTE that in MADDPG, we need the obs and actions of all agents

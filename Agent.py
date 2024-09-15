@@ -1,20 +1,24 @@
 from copy import deepcopy
 from typing import List
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
 from torch.optim import Adam
 
 
+#TODO 修复GPU和CPU同时处理数据的问题
 class Agent:
     """Agent that can interact with environment from pettingzoo"""
 
-    def __init__(self, obs_dim, act_dim, global_obs_dim, actor_lr, critic_lr):
-        self.actor = MLPNetwork(obs_dim, act_dim)
+    def __init__(self, obs_dim, act_dim, global_obs_dim, actor_lr, critic_lr, device):
+        self.device = device
+        self.actor = MLPNetwork(np.prod(obs_dim), np.prod(act_dim)).to(self.device)
 
         # critic input all the observations and actions
         # if there are 3 agents for example, the input for critic is (obs1, obs2, obs3, act1, act2, act3)
+        # TODO 不应该只输出一个维度的信息
         self.critic = MLPNetwork(global_obs_dim, 1)
         self.actor_optimizer = Adam(self.actor.parameters(), lr=actor_lr)
         self.critic_optimizer = Adam(self.critic.parameters(), lr=critic_lr)
@@ -35,6 +39,7 @@ class Agent:
         # b) calculate action when update actor, where input(obs) is sampled from replay buffer with size:
         # torch.Size([batch_size, state_dim])
 
+        obs = obs.to(self.device)
         logits = self.actor(obs)  # torch.Size([batch_size, action_size])
         # action = self.gumbel_softmax(logits)
         action = F.gumbel_softmax(logits, hard=True)
@@ -47,16 +52,21 @@ class Agent:
         # we use target actor to get next action given next states,
         # which is sampled from replay buffer with size torch.Size([batch_size, state_dim])
 
+        obs = obs.to(self.device)
         logits = self.target_actor(obs)  # torch.Size([batch_size, action_size])
         # action = self.gumbel_softmax(logits)
         action = F.gumbel_softmax(logits, hard=True)
         return action.squeeze(0).detach()
 
     def critic_value(self, state_list: List[Tensor], act_list: List[Tensor]):
+        state_list = [s.to(self.device) for s in state_list]    # 移动state_list到GPU
+        act_list = [a.to(self.device) for a in act_list]        # 移动act_list到GPU
         x = torch.cat(state_list + act_list, 1)
         return self.critic(x).squeeze(1)  # tensor with a given length
 
     def target_critic_value(self, state_list: List[Tensor], act_list: List[Tensor]):
+        state_list = [s.to(self.device) for s in state_list]    # 移动state_list到GPU
+        act_list = [a.to(self.device) for a in act_list]        # 移动act_list到GPU
         x = torch.cat(state_list + act_list, 1)
         return self.target_critic(x).squeeze(1)  # tensor with a given length
 
@@ -94,4 +104,6 @@ class MLPNetwork(nn.Module):
             m.bias.data.fill_(0.01)
 
     def forward(self, x):
+        # 展平张量
+        x = x.view(x.size(0), -1)
         return self.net(x)
