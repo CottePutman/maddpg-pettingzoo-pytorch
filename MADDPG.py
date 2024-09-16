@@ -47,9 +47,10 @@ class MADDPG:
         self.res_dir = res_dir  # directory to save the training result
         self.logger = setup_logger(os.path.join(res_dir, 'maddpg.log'))
 
+
     def add(self, observations, actions, rewards, next_observations, truncations, terminations):
         # NOTE that the experience is a dict with agent name as its key
-        for agent_id in actions.keys():
+        for agent_id in next_observations.keys():
             # 终止/超时检测
             # 代理死亡时，其信息不会再被包含在env.reset()的返回值中，
             # 而obs本质上是上一步的观察值，即代理死亡前的观察值，因而仍然包含有相关信息
@@ -64,20 +65,20 @@ class MADDPG:
             obs = observations[agent_id]
             action = actions[agent_id]
 
-            # 此处转换为都热编码的操作似乎没有任何意义，而且后续管线并不支持对多维向量的处理
+            # 此处转换为都热编码的操作非常重要，关乎后续的maddpg.learn函数
+            # TODO 此处仅仅非常粗糙地一律将离散动作以int32型进行独热编码
             # Ensure action is always treated as an int64, even if int is returned
-            # if isinstance(action, int):
-            #     # the action from env.action_space.sample() is int, we have to convert it to onehot
-            #     # Convert action to int64 before converting to one-hot
-            #     action = np.eye(self.dim_info[agent_id][1])[np.int64(action)]
-            # elif isinstance(action, np.int64):
-            #     action = np.eye(self.dim_info[agent_id][1])[action]
+            if isinstance(action, int) or isinstance(action, np.int64):
+                # the action from env.action_space.sample() is int, we have to convert it to onehot
+                # Convert action to int64 before converting to one-hot
+                action = np.eye(self.dim_info[agent_id][1])[np.int32(action)]
             
             reward = rewards[agent_id]
             next_obs = next_observations[agent_id]
             truncation = truncations[agent_id]
             termination = terminations[agent_id]
             self.buffers[agent_id].add(obs, action, reward, next_obs, truncation, termination)
+
 
     def sample(self, batch_size):
         """sample experience from all the agents' buffers, and collect data for network input"""
@@ -87,18 +88,19 @@ class MADDPG:
 
         # NOTE that in MADDPG, we need the obs and actions of all agents
         # but only the reward and done of the current agent is needed in the calculation
-        obs, act, reward, next_obs, done, next_act = {}, {}, {}, {}, {}, {}
+        obs, act, reward, next_obs, trunction, termination, next_act = {}, {}, {}, {}, {}, {}, {}
         for agent_id, buffer in self.buffers.items():
-            o, a, r, n_o, d = buffer.sample(indices)
-            obs[agent_id] = o
-            act[agent_id] = a
-            reward[agent_id] = r
-            next_obs[agent_id] = n_o
-            done[agent_id] = d
+            o, a, r, n_o, tru, ter = buffer.sample(indices)
+            obs[agent_id] = o.to(self.device)
+            act[agent_id] = a.to(self.device)
+            reward[agent_id] = r.to(self.device)
+            next_obs[agent_id] = n_o.to(self.device)
+            trunction[agent_id] = tru.to(self.device)
+            termination[agent_id] = ter.to(self.device)
             # calculate next_action using target_network and next_state
-            next_act[agent_id] = self.agents[agent_id].target_action(n_o)
+            next_act[agent_id] = self.agents[agent_id].target_action(n_o).to(self.device)
 
-        return obs, act, reward, next_obs, done, next_act
+        return obs, act, reward, next_obs, trunction, termination, next_act
 
     def select_action(self, obs):
         actions = {}
@@ -112,14 +114,14 @@ class MADDPG:
 
     def learn(self, batch_size, gamma):
         for agent_id, agent in self.agents.items():
-            obs, act, reward, next_obs, done, next_act = self.sample(batch_size)
+            obs, act, reward, next_obs, truncation, termination, next_act = self.sample(batch_size)
             # update critic
             critic_value = agent.critic_value(list(obs.values()), list(act.values()))
 
             # calculate target critic value
             next_target_critic_value = agent.target_critic_value(list(next_obs.values()),
                                                                  list(next_act.values()))
-            target_value = reward[agent_id] + gamma * next_target_critic_value * (1 - done[agent_id])
+            target_value = reward[agent_id] + gamma * next_target_critic_value * (1 - truncation[agent_id]) * (1 - termination[agent_id])
 
             critic_loss = F.mse_loss(critic_value, target_value.detach(), reduction='mean')
             agent.update_critic(critic_loss)

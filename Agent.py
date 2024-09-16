@@ -19,17 +19,17 @@ class Agent:
         # critic input all the observations and actions
         # if there are 3 agents for example, the input for critic is (obs1, obs2, obs3, act1, act2, act3)
         # TODO 不应该只输出一个维度的信息
-        self.critic = MLPNetwork(global_obs_dim, 1)
+        self.critic = MLPNetwork(global_obs_dim, 1).to(self.device)
         self.actor_optimizer = Adam(self.actor.parameters(), lr=actor_lr)
         self.critic_optimizer = Adam(self.critic.parameters(), lr=critic_lr)
         self.target_actor = deepcopy(self.actor)
         self.target_critic = deepcopy(self.critic)
 
     @staticmethod
-    def gumbel_softmax(logits, tau=1.0, eps=1e-20):
+    def gumbel_softmax(self, logits, tau=1.0, eps=1e-20):
         # NOTE that there is a function like this implemented in PyTorch(torch.nn.functional.gumbel_softmax),
         # but as mention in the doc, it may be removed in the future, so i implement it myself
-        epsilon = torch.rand_like(logits)
+        epsilon = torch.rand_like(logits, device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
         logits += -torch.log(-torch.log(epsilon + eps) + eps)
         return F.softmax(logits / tau, dim=-1)
 
@@ -61,8 +61,9 @@ class Agent:
     def critic_value(self, state_list: List[Tensor], act_list: List[Tensor]):
         state_list = [s.to(self.device) for s in state_list]    # 移动state_list到GPU
         act_list = [a.to(self.device) for a in act_list]        # 移动act_list到GPU
+        # print([s.device for s in state_list], [a.device for a in act_list])
         x = torch.cat(state_list + act_list, 1)
-        return self.critic(x).squeeze(1)  # tensor with a given length
+        return self.critic(x).squeeze(1)                        # tensor with a given length
 
     def target_critic_value(self, state_list: List[Tensor], act_list: List[Tensor]):
         state_list = [s.to(self.device) for s in state_list]    # 移动state_list到GPU

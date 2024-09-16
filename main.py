@@ -14,7 +14,7 @@ def get_env(env_name, ep_len=25):
     new_env = None
     if env_name == 'zombie':
         # render_mode="human"会大幅拉低训练速度
-        new_env = knights_archers_zombies_v10.parallel_env(render_mode="rgb_array",
+        new_env = knights_archers_zombies_v10.parallel_env(render_mode="human",
                                                            num_archers=2,
                                                            num_knights=2)
     elif env_name == 'simple_adversary_v2':
