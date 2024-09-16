@@ -5,12 +5,46 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "eval tag",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "evaluate.py",
+            "console": "integratedTerminal",
+            "args": [
+                "simple_tag_v2",
+                "2"
+            ],
+            "justMyCode": false
+        },
+        {
+            "name": "tag",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "args": [
+                "simple_tag_v2"
+            ],
+            "justMyCode": false
+        },
+        {
+            "name": "eval simple",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "evaluate.py",
+            "console": "integratedTerminal",
+            "args": [
+                "simple_adversary_v2",
+                "11"
+            ],
+            "justMyCode": false
+        },
+        {
             "name": "zombie",
             "type": "debugpy",
             "request": "launch",
             "program": "main.py",
             "console": "integratedTerminal",
-            // "args": ["zombie"],
             "args": [
                 "zombie"
             ],

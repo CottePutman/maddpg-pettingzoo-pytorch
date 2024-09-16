@@ -32,14 +32,14 @@ if __name__ == '__main__':
     # reward of each episode of each agent
     episode_rewards = {agent: np.zeros(args.episode_num) for agent in env.agents}
     for episode in range(args.episode_num):
-        states = env.reset()
+        observations, infos = env.reset()
         agent_reward = {agent: 0 for agent in env.agents}  # agent reward of the current episode
         frame_list = []  # used to save gif
         while env.agents:  # interact with the env for an episode
-            actions = maddpg.select_action(states)
-            next_states, rewards, dones, infos = env.step(actions)
-            frame_list.append(Image.fromarray(env.render(mode='rgb_array')))
-            states = next_states
+            actions = maddpg.select_action(observations)
+            next_observations, rewards, terminations, truncations, infos = env.step(actions)
+            frame_list.append(Image.fromarray(env.render()))
+            observations = next_observations
 
             for agent_id, reward in rewards.items():  # update reward
                 agent_reward[agent_id] += reward

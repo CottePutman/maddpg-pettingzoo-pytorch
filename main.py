@@ -18,11 +18,12 @@ def get_env(env_name, ep_len=25):
                                                            num_archers=2,
                                                            num_knights=2)
     elif env_name == 'simple_adversary_v2':
-        new_env = simple_adversary_v3.parallel_env(render_mode="human")
+        new_env = simple_adversary_v3.parallel_env(render_mode="rgb_array")
     elif env_name == 'simple_spread_v2':
         new_env = simple_spread_v3.parallel_env(max_cycles=ep_len)
     elif env_name == 'simple_tag_v2':
-        new_env = simple_tag_v3.parallel_env(max_cycles=ep_len)
+        new_env = simple_tag_v3.parallel_env(render_mode="rgb_array",
+                                             max_cycles=ep_len)
 
     new_env.reset(seed=42)
     _dim_info = {}
@@ -38,7 +39,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('env_name', type=str, default='simple_adversary_v2', help='name of the env',
                         choices=['simple_adversary_v2', 'simple_spread_v2', 'simple_tag_v2', 'zombie'])
-    parser.add_argument('--episode_num', type=int, default=5000,
+    parser.add_argument('--episode_num', type=int, default=50000,
                         help='total episode num during training procedure')
     parser.add_argument('--episode_length', type=int, default=25, help='steps per episode')
     parser.add_argument('--learn_interval', type=int, default=100,
