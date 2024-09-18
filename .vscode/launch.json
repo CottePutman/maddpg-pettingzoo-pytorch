@@ -5,6 +5,17 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "market",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "args": [
+                "market",
+                "--episode_num 100",
+            ]
+        },
+        {
             "name": "eval tag",
             "type": "debugpy",
             "request": "launch",

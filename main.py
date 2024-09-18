@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pettingzoo.mpe import simple_adversary_v3, simple_spread_v3, simple_tag_v3
 from pettingzoo.butterfly import knights_archers_zombies_v10
+from portfolio import PortfolioEnv
+from simple_env import simple_aec_market
 
 from MADDPG import MADDPG
 
@@ -24,6 +26,10 @@ def get_env(env_name, ep_len=25):
     elif env_name == 'simple_tag_v2':
         new_env = simple_tag_v3.parallel_env(render_mode="rgb_array",
                                              max_cycles=ep_len)
+    elif env_name == 'port':
+        new_env = PortfolioEnv()
+    elif env_name == 'market':
+        new_env = simple_aec_market.parallel_env(render_mode='human')
 
     new_env.reset(seed=42)
     _dim_info = {}
@@ -38,7 +44,7 @@ def get_env(env_name, ep_len=25):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('env_name', type=str, default='simple_adversary_v2', help='name of the env',
-                        choices=['simple_adversary_v2', 'simple_spread_v2', 'simple_tag_v2', 'zombie'])
+                        choices=['simple_adversary_v2', 'simple_spread_v2', 'simple_tag_v2', 'zombie', 'port', 'market'])
     parser.add_argument('--episode_num', type=int, default=50000,
                         help='total episode num during training procedure')
     parser.add_argument('--episode_length', type=int, default=25, help='steps per episode')
@@ -75,7 +81,8 @@ if __name__ == '__main__':
         observations, infos = env.reset()
         agent_reward = {agent_id: 0 for agent_id in env.agents}  # agent reward of the current episode
         while env.agents:  # interact with the env for an episode
-            step += 1        
+            step += 1      
+            # 最开始是进行随机决策，到达一定步数之后才换为maddpg的决策  
             if step < args.random_steps:
                 actions = {agent: env.action_space(agent).sample() for agent in env.agents}
             else:
