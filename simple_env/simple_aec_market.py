@@ -109,12 +109,13 @@ class raw_env(AECEnv):
         
         # 与PettingZoo的原生API保持一致
         obs_space = Box(low=0, high=np.inf, shape=(3,), dtype=np.float32)
-        self.observation_spaces = dict(
-            zip(
-                self.agents,
-                [obs_space for _ in enumerate(self.agents)]
-            )
-        )
+        # self.observation_spaces = dict(
+        #     zip(
+        #         self.agents,
+        #         [obs_space for _ in enumerate(self.agents)]
+        #     )
+        # )
+        self.observation_spaces = {a: obs_space for a in self.agents}
 
         self.rewards = {a: 0 for a in self.agents}
         self.terminations = {a: False for a in self.agents}
