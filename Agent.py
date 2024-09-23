@@ -8,7 +8,6 @@ from torch import nn, Tensor
 from torch.optim import Adam
 
 
-#TODO 修复GPU和CPU同时处理数据的问题
 class Agent:
     """Agent that can interact with environment from pettingzoo"""
 

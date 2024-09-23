@@ -1,4 +1,5 @@
 import argparse
+import yaml
 import os
 
 import matplotlib.pyplot as plt
@@ -9,6 +10,12 @@ from portfolio import PortfolioEnv
 from simple_env import simple_aec_market
 
 from MADDPG import MADDPG
+
+
+def load_config(path):
+    with open(path, 'r') as f:
+        config = yaml.safe_load(f)
+    return config
 
 
 def get_env(env_name, ep_len=25):
@@ -43,25 +50,25 @@ def get_env(env_name, ep_len=25):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('env_name', type=str, default='simple_adversary_v2', help='name of the env',
-                        choices=['simple_adversary_v2', 'simple_spread_v2', 'simple_tag_v2', 'zombie', 'port', 'market'])
-    parser.add_argument('--episode_num', type=int, default=50000,
-                        help='total episode num during training procedure')
-    parser.add_argument('--episode_length', type=int, default=25, help='steps per episode')
-    parser.add_argument('--learn_interval', type=int, default=100,
-                        help='steps interval between learning time')
-    parser.add_argument('--random_steps', type=int, default=5e4,
-                        help='random steps before the agent start to learn')
-    parser.add_argument('--tau', type=float, default=0.02, help='soft update parameter')
-    parser.add_argument('--gamma', type=float, default=0.95, help='discount factor')
-    parser.add_argument('--buffer_capacity', type=int, default=int(1e6), help='capacity of replay buffer')
-    parser.add_argument('--batch_size', type=int, default=1024, help='batch-size of replay buffer')
-    parser.add_argument('--actor_lr', type=float, default=0.01, help='learning rate of actor')
-    parser.add_argument('--critic_lr', type=float, default=0.01, help='learning rate of critic')
+    parser.add_argument('--config_path', dest="config_path", type=str, required=True)
     args = parser.parse_args()
 
+    config = load_config(args.config_path)
+    
+    env_name = config['environment']['env_name']
+    episode_num = config['training']['episode_num']
+    episode_length = config['training']['episode_length']
+    learn_interval = config['training']['learn_interval']
+    random_steps = config['training']['random_steps']
+    tau = config['training']['tau']
+    gamma = config['training']['gamma']
+    buffer_capacity = config['training']['buffer_capacity']
+    batch_size = config['training']['batch_size']
+    actor_lr = config['training']['actor_lr']
+    critic_lr = config['training']['critic_lr']
+
     # create folder to save result
-    env_dir = os.path.join('./results', args.env_name)
+    env_dir = os.path.join('./results', env_name)
     if not os.path.exists(env_dir):
         os.makedirs(env_dir)
     total_files = len([file for file in os.listdir(env_dir)])
@@ -69,21 +76,25 @@ if __name__ == '__main__':
     os.makedirs(result_dir)
 
     # MADDPG似乎不能支持二维观察值的初始化
-    env, dim_info = get_env(args.env_name, args.episode_length)
-    maddpg = MADDPG(dim_info, args.buffer_capacity, args.batch_size, args.actor_lr, args.critic_lr,
+    env, dim_info = get_env(env_name, episode_length)
+    maddpg = MADDPG(dim_info, 
+                    buffer_capacity, 
+                    batch_size, 
+                    actor_lr, 
+                    critic_lr,
                     result_dir)
 
     step = 0  # global step counter
     agent_num = env.num_agents
     # reward of each episode of each agent
-    episode_rewards = {agent_id: np.zeros(args.episode_num) for agent_id in env.agents}
-    for episode in range(args.episode_num):
+    episode_rewards = {agent_id: np.zeros(episode_num) for agent_id in env.agents}
+    for episode in range(episode_num):
         observations, infos = env.reset()
         agent_reward = {agent_id: 0 for agent_id in env.agents}  # agent reward of the current episode
         while env.agents:  # interact with the env for an episode
             step += 1      
             # 最开始是进行随机决策，到达一定步数之后才换为maddpg的决策  
-            if step < args.random_steps:
+            if step < random_steps:
                 actions = {agent: env.action_space(agent).sample() for agent in env.agents}
             else:
                 actions = maddpg.select_action(observations)
@@ -95,9 +106,9 @@ if __name__ == '__main__':
             for agent_id, r in rewards.items():  # update reward
                 agent_reward[agent_id] += r
 
-            if step >= args.random_steps and step % args.learn_interval == 0:  # learn every few steps
-                maddpg.learn(args.batch_size, args.gamma)
-                maddpg.update_target(args.tau)
+            if step >= random_steps and step % learn_interval == 0:  # learn every few steps
+                maddpg.learn(batch_size, gamma)
+                maddpg.update_target(tau)
 
             observations = next_observations
 
@@ -129,13 +140,13 @@ if __name__ == '__main__':
 
     # training finishes, plot reward
     fig, ax = plt.subplots()
-    x = range(1, args.episode_num + 1)
+    x = range(1, episode_num + 1)
     for agent_id, reward in episode_rewards.items():
         ax.plot(x, reward, label=agent_id)
         ax.plot(x, get_running_reward(reward))
     ax.legend()
     ax.set_xlabel('episode')
     ax.set_ylabel('reward')
-    title = f'training result of maddpg solve {args.env_name}'
+    title = f'training result of maddpg solve {env_name}'
     ax.set_title(title)
     plt.savefig(os.path.join(result_dir, title))

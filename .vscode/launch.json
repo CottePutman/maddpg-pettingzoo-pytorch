@@ -11,8 +11,8 @@
             "program": "main.py",
             "console": "integratedTerminal",
             "args": [
-                "market",
-                "--episode_num 100",
+                "--config_path",
+                "configs/market.yaml"
             ]
         },
         {
