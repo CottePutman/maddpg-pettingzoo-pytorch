@@ -13,7 +13,8 @@
             "args": [
                 "--config_path",
                 "configs/pm.yaml"
-            ]
+            ],
+            "justMyCode": false
         },
         {
             "name": "market",

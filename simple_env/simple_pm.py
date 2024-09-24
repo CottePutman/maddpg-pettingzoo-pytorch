@@ -1,5 +1,4 @@
 import functools
-from copy import copy
 import pprint
 import matplotlib as plt
 
@@ -350,6 +349,7 @@ class raw_env(AECEnv):
         Actions should be portfolio [w0...]
         - Where wn is a portfolio weight from 0 to 1. The first is cash_bias
         - cn is the portfolio conversion weights see PortioSim._step for description
+        - 需要注意，由于本环境为连续动作环境，会直接以Agent类的Actor最后一层logits输出作为action，那么就需要在某处加上softmax，否则会直接被clip_out_of_bounds裁切
         """
         agent = self.agent_selection      
         if (
@@ -408,7 +408,8 @@ class raw_env(AECEnv):
         self.rewards[agent] = reward
         self.terminations[agent] = done1 or done2
         # self.truncations[agent] = done2
-        self.infos[agent].append(info)
+        # TODO info无限增长，暂时没什么用不启用了
+        # self.infos[agent].append(info)
 
         # TODO 实现保证金机制
         # 奖励小于特定值的时候破产

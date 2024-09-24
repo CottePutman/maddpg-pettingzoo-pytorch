@@ -11,23 +11,26 @@ from torch.optim import Adam
 class Agent:
     """Agent that can interact with environment from pettingzoo"""
 
-    def __init__(self, obs_dim, act_dim, global_obs_dim, actor_lr, critic_lr, device):
+    def __init__(self, obs_dim, act_dim, global_obs_dim, actor_lr, critic_lr, device, act_type='discrete'):
         self.device = device
         self.actor = MLPNetwork(np.prod(obs_dim), np.prod(act_dim)).to(self.device)
 
         # critic input all the observations and actions
         # if there are 3 agents for example, the input for critic is (obs1, obs2, obs3, act1, act2, act3)
-        # TODO 不应该只输出一个维度的信息
+        # Critic应当学习代理所有的动作和观察值来生成一个预测的Q值
         self.critic = MLPNetwork(global_obs_dim, 1).to(self.device)
         self.actor_optimizer = Adam(self.actor.parameters(), lr=actor_lr)
         self.critic_optimizer = Adam(self.critic.parameters(), lr=critic_lr)
         self.target_actor = deepcopy(self.actor)
         self.target_critic = deepcopy(self.critic)
+        self.act_type = act_type
 
     @staticmethod
     def gumbel_softmax(self, logits, tau=1.0, eps=1e-20):
         # NOTE that there is a function like this implemented in PyTorch(torch.nn.functional.gumbel_softmax),
         # but as mention in the doc, it may be removed in the future, so i implement it myself
+        # tau是温度参数，用于控制softmax得到的值的均匀程度，或称为平滑程度
+        # tau越大分布越温和，越小则越尖锐
         epsilon = torch.rand_like(logits, device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
         logits += -torch.log(-torch.log(epsilon + eps) + eps)
         return F.softmax(logits / tau, dim=-1)
@@ -41,7 +44,11 @@ class Agent:
         obs = obs.to(self.device)
         logits = self.actor(obs)  # torch.Size([batch_size, action_size])
         # action = self.gumbel_softmax(logits)
-        action = F.gumbel_softmax(logits, hard=True)
+        if self.act_type == 'discrete':
+            action = F.gumbel_softmax(logits, hard=True)
+        elif self.act_type == 'continue':
+            action = logits     # 若为连续型，则直接以最后一层的输出logits作为动作值
+
         if model_out:
             return action, logits
         return action
@@ -54,7 +61,10 @@ class Agent:
         obs = obs.to(self.device)
         logits = self.target_actor(obs)  # torch.Size([batch_size, action_size])
         # action = self.gumbel_softmax(logits)
-        action = F.gumbel_softmax(logits, hard=True)
+        if self.act_type == 'discrete':
+            action = F.gumbel_softmax(logits, hard=True)
+        elif self.act_type == 'continue':
+            action = logits     # 若为连续型，则直接以最后一层的输出logits作为动作值
         return action.squeeze(0).detach()
 
     def critic_value(self, state_list: List[Tensor], act_list: List[Tensor]):

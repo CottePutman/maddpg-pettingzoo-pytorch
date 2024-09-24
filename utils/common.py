@@ -1,17 +1,10 @@
-# from keras import backend as K
 import numpy as np
 import os
 import sys
+import torch
+import torch.nn.functional as F
 from importlib import reload
 from utils.data import read_stock_history, date_to_index
-
-
-# def set_keras_backend(backend):
-
-#     if K.backend() != backend:
-#         os.environ['KERAS_BACKEND'] = backend
-#         reload(K)
-#         assert K.backend() == backend
 
 
 def get_history_and_abb():
@@ -44,3 +37,13 @@ def get_history_and_abb():
     #         testing_history[i][j] = testing_history[i][j]/np.linalg.norm(testing_history[i][j])
 
     return target_history, target_stocks
+
+
+def softmax_and_mapping(x: np.ndarray, bound: list):
+    assert(isinstance(bound, list) and len(bound)==2), "bound must be a list with the length of 2."
+    if bound[0] >= bound[1]:
+        raise ValueError(f"Bound upper bound {bound[1]} must be larger than lower bound {bound[0]}.")
+    
+    e_x = np.exp(x - np.max(x))
+    softmax = e_x / e_x.sum(axis=0)
+    return bound[0] + softmax * (bound[1] - bound[0])

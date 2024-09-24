@@ -8,6 +8,7 @@ import torch.nn.functional as F
 
 from Agent import Agent
 from Buffer import Buffer
+from utils.common import softmax_and_mapping
 
 
 def setup_logger(filename):
@@ -28,7 +29,7 @@ def setup_logger(filename):
 class MADDPG:
     """A MADDPG(Multi Agent Deep Deterministic Policy Gradient) agent"""
 
-    def __init__(self, dim_info, capacity, batch_size, actor_lr, critic_lr, res_dir):
+    def __init__(self, dim_info, act_type, capacity, batch_size, actor_lr, critic_lr, res_dir):
         # sum all the dims of each agent to get input dim for critic
         # 调用np.prod()对多维值进行相乘操作,val[0]是观察空间，val[1]是动作空间
         global_obs_act_dim = sum(np.prod(val[0]) for val in dim_info.values()) + sum(np.prod(val[1]) for val in dim_info.values())
@@ -36,11 +37,14 @@ class MADDPG:
         self.agents = {}
         self.buffers = {}
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # self.device = 'cpu'
-        for agent_id, (obs_dim, act_dim) in dim_info.items():
-            self.agents[agent_id] = Agent(obs_dim, act_dim, global_obs_act_dim, actor_lr, critic_lr, self.device)
+
+        for agent_id, (obs_dim, act_dim, act_type, softmax) in dim_info.items():
+            # TODO 根据dim_info的act_type进行网络的选择
+            self.agents[agent_id] = Agent(obs_dim, act_dim, global_obs_act_dim, actor_lr, critic_lr, self.device, act_type)
             self.buffers[agent_id] = Buffer(capacity, obs_dim, act_dim, self.device)
         self.dim_info = dim_info
+        self.act_type = act_type
+        self.softmax = softmax
 
         self.batch_size = batch_size
         self.res_dir = res_dir  # directory to save the training result
@@ -53,10 +57,7 @@ class MADDPG:
             # 终止/超时检测
             # 代理死亡时，其信息不会再被包含在env.reset()的返回值中，
             # 而obs本质上是上一步的观察值，即代理死亡前的观察值，因而仍然包含有相关信息
-            # 但actions, rewards, next_observations, terminations和truncations中并不包含相关键值
-            # 在下一次被调用时，将不会再出现死亡的agent_id
-            # TODO 如何处理代理提前终止时的信用分配问题，先用吸收态凑合一下？
-            # 先改为使用actions的键值进行检索
+            # 但actions, rewards, next_observations, termination如何对np.array进行softmax
             # if agent_id not in terminations.keys() or agent_id not in truncations.keys():
             #     # self.buffers[agent_id].add(obs, 0, 0, obs, True, True)
             #     continue
@@ -64,7 +65,8 @@ class MADDPG:
             obs = observations[agent_id]
             action = actions[agent_id]
 
-            # 此处转换为都热编码的操作非常重要，关乎后续的maddpg.learn函数
+            # 若是连续型的动作则无视该步骤
+            # 此处将离散值转换为独热编码的操作非常重要，关乎后续的maddpg.learn函数
             # TODO 此处仅仅非常粗糙地一律将离散动作以int32型进行独热编码
             # Ensure action is always treated as an int64, even if int is returned
             if isinstance(action, int) or isinstance(action, np.int64):
@@ -104,10 +106,22 @@ class MADDPG:
     def select_action(self, obs):
         actions = {}
         for agent, o in obs.items():
-            o = torch.from_numpy(o).unsqueeze(0).float()
+            o = torch.from_numpy(o).unsqueeze(0).float().to(self.device)
             a = self.agents[agent].action(o)  # torch.Size([1, action_size])
             # NOTE that the output is a tensor, convert it to int before input to the environment
-            actions[agent] = a.squeeze(0).argmax().item()
+            # 支持自动判断连续、离散动作的输出
+            if self.act_type == 'discrete':
+                actions[agent] = a.squeeze(0).argmax().item()
+            elif self.act_type == 'continue':
+                actions[agent] = a.squeeze(0).detach().cpu().numpy()
+                # 连续值的情况下却不设置softmax值，需要警报用户
+                if self.softmax is None:
+                    raise UserWarning(f"Agent {agent}'s actions are continuous but softmax is not set.")
+                # 对softmax进行规范化的步骤已经在get_env中进行处理过
+                actions[agent] = softmax_and_mapping(actions[agent], self.softmax)
+            else:
+                raise ValueError(f"Unsupported action space type: {self.act_type}")
+            
             self.logger.info(f'{agent} action: {actions[agent]}')
         return actions
 

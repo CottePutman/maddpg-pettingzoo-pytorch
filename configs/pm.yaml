@@ -1,11 +1,14 @@
 environment:
   env_name: pm
+  act_type:
+    all: continue
+  softmax: [0, 1]   # lower bound and upper bound of softmax
 
 training:
   episode_num: 500
   episode_length: 25
   learn_interval: 100
-  random_steps: 50000
+  random_steps: 10000   # should not be too small or the MADDPG.sample will malfunction
   tau: 0.02
   gamma: 0.95
   buffer_capacity: 1000000

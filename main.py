@@ -1,53 +1,16 @@
 import argparse
 import yaml
 import os
-
 import matplotlib.pyplot as plt
 import numpy as np
-from pettingzoo.mpe import simple_adversary_v3, simple_spread_v3, simple_tag_v3
-from pettingzoo.butterfly import knights_archers_zombies_v10
-from portfolio import PortfolioEnv
-from simple_env import simple_aec_market, simple_pm
-
 from MADDPG import MADDPG
+from utils.env import get_env
 
 
 def load_config(path):
     with open(path, 'r') as f:
         config = yaml.safe_load(f)
     return config
-
-
-def get_env(env_name, ep_len=25):
-    """create environment and get observation and action dimension of each agent in this environment"""
-    new_env = None
-    if env_name == 'zombie':
-        # render_mode="human"会大幅拉低训练速度
-        new_env = knights_archers_zombies_v10.parallel_env(render_mode="human",
-                                                           num_archers=2,
-                                                           num_knights=2)
-    elif env_name == 'simple_adversary_v2':
-        new_env = simple_adversary_v3.parallel_env(render_mode="rgb_array")
-    elif env_name == 'simple_spread_v2':
-        new_env = simple_spread_v3.parallel_env(max_cycles=ep_len)
-    elif env_name == 'simple_tag_v2':
-        new_env = simple_tag_v3.parallel_env(render_mode="rgb_array",
-                                             max_cycles=ep_len)
-    elif env_name == 'port':
-        new_env = PortfolioEnv()
-    elif env_name == 'market':
-        new_env = simple_aec_market.parallel_env(render_mode='human')
-    elif env_name == 'pm':
-        new_env = simple_pm.parallel_env(render_mode='human')
-
-    new_env.reset(seed=42)
-    _dim_info = {}
-    for agent_id in new_env.agents:
-        _dim_info[agent_id] = []  # [(obs_shape), (act_shape)]
-        _dim_info[agent_id].append(new_env.observation_space(agent_id).shape or new_env.observation_space(agent_id).shape[0])
-        _dim_info[agent_id].append(new_env.action_space(agent_id).shape or new_env.action_space(agent_id).n)
-
-    return new_env, _dim_info
 
 
 if __name__ == '__main__':
@@ -58,6 +21,9 @@ if __name__ == '__main__':
     config = load_config(args.config_path)
     
     env_name = config['environment']['env_name']
+    act_type = config['environment']['act_type'] or None
+    softmax = config['environment']['softmax'] or None
+    
     episode_num = config['training']['episode_num']
     episode_length = config['training']['episode_length']
     learn_interval = config['training']['learn_interval']
@@ -78,8 +44,9 @@ if __name__ == '__main__':
     os.makedirs(result_dir)
 
     # MADDPG似乎不能支持二维观察值的初始化
-    env, dim_info = get_env(env_name, episode_length)
-    maddpg = MADDPG(dim_info, 
+    env, dim_info = get_env(env_name, episode_length, act_type, softmax)
+    maddpg = MADDPG(dim_info,
+                    act_type, 
                     buffer_capacity, 
                     batch_size, 
                     actor_lr, 
