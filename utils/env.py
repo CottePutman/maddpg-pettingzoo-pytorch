@@ -1,7 +1,7 @@
 from pettingzoo.mpe import simple_adversary_v3, simple_spread_v3, simple_tag_v3
 from pettingzoo.butterfly import knights_archers_zombies_v10
 from portfolio import PortfolioEnv
-from simple_env import simple_aec_market, simple_pm
+from simple_env import portfolio, simple_aec_market
 
 
 def get_env(env_name, ep_len=25, act_type: dict = None, softmax: list = None):
@@ -26,7 +26,7 @@ def get_env(env_name, ep_len=25, act_type: dict = None, softmax: list = None):
     elif env_name == 'market':
         new_env = simple_aec_market.parallel_env(render_mode='human')
     elif env_name == 'pm':
-        new_env = simple_pm.parallel_env(render_mode='human')
+        new_env = portfolio.parallel_env(render_mode='human')
 
     new_env.reset(seed=42)
     _dim_info = {}
