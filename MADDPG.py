@@ -30,9 +30,8 @@ class MADDPG:
 
     def __init__(self, dim_info, capacity, batch_size, actor_lr, critic_lr, res_dir):
         # sum all the dims of each agent to get input dim for critic
-        # global_obs_act_dim = sum(sum(val) for val in dim_info.values())
-        # 调用np.prod()对多维值进行相乘操作
-        global_obs_act_dim = sum(np.prod(val[0]) for val in dim_info.values()) + sum(val[1] for val in dim_info.values())
+        # 调用np.prod()对多维值进行相乘操作,val[0]是观察空间，val[1]是动作空间
+        global_obs_act_dim = sum(np.prod(val[0]) for val in dim_info.values()) + sum(np.prod(val[1]) for val in dim_info.values())
         # create Agent(actor-critic) and replay buffer for each agent
         self.agents = {}
         self.buffers = {}

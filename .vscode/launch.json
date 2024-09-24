@@ -5,6 +5,17 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "pm",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--config_path",
+                "configs/pm.yaml"
+            ]
+        },
+        {
             "name": "market",
             "type": "debugpy",
             "request": "launch",

@@ -1,0 +1,14 @@
+environment:
+  env_name: pm
+
+training:
+  episode_num: 500
+  episode_length: 25
+  learn_interval: 100
+  random_steps: 50000
+  tau: 0.02
+  gamma: 0.95
+  buffer_capacity: 1000000
+  batch_size: 1024
+  actor_lr: 0.01
+  critic_lr: 0.01

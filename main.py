@@ -7,7 +7,7 @@ import numpy as np
 from pettingzoo.mpe import simple_adversary_v3, simple_spread_v3, simple_tag_v3
 from pettingzoo.butterfly import knights_archers_zombies_v10
 from portfolio import PortfolioEnv
-from simple_env import simple_aec_market
+from simple_env import simple_aec_market, simple_pm
 
 from MADDPG import MADDPG
 
@@ -37,6 +37,8 @@ def get_env(env_name, ep_len=25):
         new_env = PortfolioEnv()
     elif env_name == 'market':
         new_env = simple_aec_market.parallel_env(render_mode='human')
+    elif env_name == 'pm':
+        new_env = simple_pm.parallel_env(render_mode='human')
 
     new_env.reset(seed=42)
     _dim_info = {}
