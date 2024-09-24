@@ -13,7 +13,7 @@ def get_history_and_abb():
     history = history[:, :, :4]
     target_stocks = ['AAPL', 'CMCSA', 'REGN']
     training_date_start = '2012-08-13'
-    training_date_end = '2015-08-13'  # three years training data
+    training_date_end = '2015-08-13'    # three years training data
     training_index_start = date_to_index(training_date_start)
     training_index_end = date_to_index(training_date_end)
     target_history = np.empty(shape=(len(target_stocks), training_index_end - training_index_start, history.shape[2]))

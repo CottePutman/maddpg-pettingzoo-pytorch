@@ -59,14 +59,14 @@ class DataGenerator(object):
         """
 
         Args:
-            history: (num_stocks, timestamp, 5) open, high, low, close, volume
+            history: (num_stocks, timestamp, 5: (open, high, low, close, volume))
             abbreviation: a list of length num_stocks with assets name
             steps: the total number of steps to simulate, default is 2 years
             window_length: observation window, must be less than 50
             start_date: the date to start. Default is None and random pick one.
                         It should be a string e.g. '2012-08-13'
         """
-        assert history.shape[0] == len(abbreviation), 'Number of stock is not consistent'
+        assert(history.shape[0] == len(abbreviation)), 'Number of stock is not consistent'
         import copy
 
         self.steps = steps + 1
@@ -88,8 +88,9 @@ class DataGenerator(object):
         # used for compute optimal action and sanity check
         ground_truth_obs = self.data[:, self.step_count + self.window_length:self.step_count + self.window_length + 1, :].copy()
 
-        done = self.step_count >= self.steps
-        return obs, done, ground_truth_obs
+        # 最大可模拟范围超时检测
+        truncation = self.step_count >= self.steps
+        return obs, truncation, ground_truth_obs
 
     def reset(self):
         self.step_count = 0
@@ -142,7 +143,7 @@ class PortfolioSim(object):
 
         p0 = self.p0
 
-        dw1 = (y1 * w1) / (np.dot(y1, w1) + eps)  # (eq7) weights evolve into
+        dw1 = (y1 * w1) / (np.dot(y1steps, w1) + eps)  # (eq7) weights evolve into
 
         mu1 = self.cost * (np.abs(dw1 - w1)).sum()  # (eq16) cost to change portfolio
 
@@ -159,7 +160,7 @@ class PortfolioSim(object):
         self.p0 = p1
 
         # if we run out of money, we're done (losing all the money)
-        done = p1 == 0
+        termination = p1 == 0
 
         info = {
             "reward": reward,
@@ -172,7 +173,7 @@ class PortfolioSim(object):
             "cost": mu1,
         }
         self.infos.append(info)
-        return reward, info, done
+        return reward, info, termination
 
     def reset(self):
         self.infos = []
@@ -228,7 +229,7 @@ class raw_env(AECEnv):
                  stock_abbreviation,
                  steps=730,   # 2 years
                  render_mode=None, 
-                 num_agents=1,
+                 num_agents=2,
                  num_steps=10e2,
                  trading_cost=0.0025,
                  time_cost=0.00,
@@ -252,6 +253,7 @@ class raw_env(AECEnv):
         self.num_stocks = history.shape[0]
         self.start_idx = start_idx
 
+        # TODO 模仿MultiModel，为每个代理分配不同的DataGenerator与Sim
         self.src = DataGenerator(history, 
                                  stock_abbreviation, 
                                  steps=steps, 
@@ -295,9 +297,6 @@ class raw_env(AECEnv):
         self.terminations = {a: False for a in self.agents}
         self.truncations = {a: False for a in self.agents}
         self.infos = {a: [] for a in self.agents}
-        self.trader_amounts = {a: 0 for a in self.agents}
-        self.trader_prices = {a: 0 for a in self.agents}
-        self.trader_sum_earn = {a: 0 for a in self.agents}
 
         self.render_mode = render_mode
 
@@ -331,10 +330,6 @@ class raw_env(AECEnv):
         self.dead_agents = []
 
         # 基于self.agents的必须在self.agent完成初始化后再初始化
-        self.trader_amounts = {a: 0 for a in self.agents}
-        self.trader_prices = {a: 0 for a in self.agents}
-        self.trader_sum_earn = {a: 0 for a in self.agents}
-
         self._agent_selector.reinit(self.agents)
         self._agent_selector.reset()
         self.agent_selection = self._agent_selector.reset()
@@ -382,7 +377,7 @@ class raw_env(AECEnv):
         np.testing.assert_almost_equal(
             np.sum(weights), 1.0, 3, err_msg='weights should sum to 1. action="%s"' % weights)
 
-        observation, done1, ground_truth_obs = self.src.step()
+        observation, truncation, ground_truth_obs = self.src.step()
 
         # concatenate observation with ones
         cash_observation = np.ones((1, self.window_length, observation.shape[2]))
@@ -395,7 +390,7 @@ class raw_env(AECEnv):
         close_price_vector = observation[:, -1, 3]
         open_price_vector = observation[:, -1, 0]
         y1 = close_price_vector / open_price_vector
-        reward, info, done2 = self.sim._step(weights, y1)
+        reward, info, termination = self.sim._step(weights, y1)
 
         # calculate return for buy and hold a bit of each asset
         info['market_value'] = np.cumprod([inf["return"] for inf in self.infos[agent] + [info]])[-1]
@@ -404,19 +399,16 @@ class raw_env(AECEnv):
         info['steps'] = self.src.step_count
         info['next_obs'] = ground_truth_obs
 
-        # TODO 此处瞎写的
         self.rewards[agent] = reward
-        self.terminations[agent] = done1 or done2
-        # self.truncations[agent] = done2
-        # TODO info无限增长，暂时没什么用不启用了
-        # self.infos[agent].append(info)
-
         # TODO 实现保证金机制
-        # 奖励小于特定值的时候破产
+        # 资产为0时死亡
         # 在处理完当前代理的所有动作后暂时存入kill_list
         # 待到所有代理都处理完后再移除该代理
-        # if self.trader_sum_earn[agent] < -5:
-        #     self.kill_list.append(agent)
+        if termination:
+            self.kill_list.append(agent)
+        
+        # TODO info无限增长，暂时没什么用不启用了
+        # self.infos[agent].append(info)
             
         # 每轮循环结束后：
         if self._agent_selector.is_last():
@@ -443,8 +435,8 @@ class raw_env(AECEnv):
             self.agent_selection = self._agent_selector.next()
 
         # TODO 超时检测的实现机制暂不清楚
-        truncate = self.timestep >= self.num_steps
-        self.truncations = {a: truncate for a in self.agents}
+        # truncate = self.timestep >= self.num_steps
+        # self.truncations = {a: truncate for a in self.agents}
 
         self._accumulate_rewards()
         self._deads_step_first()
