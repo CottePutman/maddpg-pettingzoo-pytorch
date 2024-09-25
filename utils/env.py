@@ -4,7 +4,7 @@ from portfolio import PortfolioEnv
 from simple_env import portfolio, simple_aec_market
 
 
-def get_env(env_name, ep_len=25, act_type: dict = None, softmax: list = None):
+def get_env(env_name, ep_len=25, env_config: dict = None):
     """
     create environment and get observation and action dimension of each agent in this environment
     """
@@ -26,7 +26,17 @@ def get_env(env_name, ep_len=25, act_type: dict = None, softmax: list = None):
     elif env_name == 'market':
         new_env = simple_aec_market.parallel_env(render_mode='human')
     elif env_name == 'pm':
-        new_env = portfolio.parallel_env(render_mode='human')
+        if env_config:
+            new_env = portfolio.parallel_env(render_mode='human',
+                                             steps=env_config['steps'],
+                                             num_agents=env_config['num_agents'],
+                                             trading_cost=env_config['trading_cost'],
+                                             time_cost=env_config['time_cost'],
+                                             window_length=env_config['window_length'],
+                                             start_idx=env_config['start_idx'],
+                                             sample_start_date=env_config['sample_start_date'])
+        else:
+            new_env = portfolio.parallel_env(render_mode='human')
 
     new_env.reset(seed=42)
     _dim_info = {}
@@ -38,13 +48,13 @@ def get_env(env_name, ep_len=25, act_type: dict = None, softmax: list = None):
         # 若all关键字存在，则所有都按照all的类型进行设置
         # 若all不存在，则根据config中为每个代理单独设置的类型进行设置
         # TODO 应当需要实现批量化操作，思路是命名的规范化与正则化匹配
-        if act_type is None:
+        if env_config is None:
             _dim_info[agent_id].append('discrete')
-        elif 'all' in act_type.keys():
-            _dim_info[agent_id].append(act_type['all'])
+        elif 'all' in env_config['act_type'].keys():
+            _dim_info[agent_id].append(env_config['act_type']['all'])
         else:
-            _dim_info[agent_id].append(act_type[agent_id])
+            _dim_info[agent_id].append(env_config['act_type'][agent_id])
             
-        _dim_info[agent_id].append(softmax)
+        _dim_info[agent_id].append(env_config['softmax'])
 
     return new_env, _dim_info

@@ -21,7 +21,7 @@ from simple_env.data_gen_sim import max_drawdown, sharpe
 eps = 1e-8
 
 
-def env(render_mode=None):
+def env(render_mode=None, **kwargs):
     """
     The env function often wraps the environment in wrappers by default.
     You can find full documentation for these methods
@@ -29,9 +29,11 @@ def env(render_mode=None):
     """
     internal_render_mode = render_mode if render_mode != "ansi" else "human"
     target_history, target_stocks = get_history_and_abb()
-    env = raw_env(render_mode=internal_render_mode, 
-                  history=target_history,
-                  stock_abbreviation=target_stocks)
+    
+    kwargs['render_mode'] = internal_render_mode
+    kwargs['history'] = target_history
+    kwargs['abbreviation'] = target_stocks
+    env = raw_env(**kwargs)
     # This wrapper is only for environments which print results to the terminal
     if render_mode == "ansi":
         env = wrappers.CaptureStdoutWrapper(env)
@@ -67,7 +69,7 @@ class raw_env(AECEnv):
     # 所有的必要参数都应该被放置在有默认值的参数之前
     def __init__(self, 
                  history,
-                 stock_abbreviation,
+                 abbreviation,
                  steps=730,   # 2 years
                  render_mode=None, 
                  num_agents=2,
@@ -95,13 +97,13 @@ class raw_env(AECEnv):
 
         # TODO 模仿MultiModel，为每个代理分配不同的DataGenerator与Sim
         self.src = DataGenerator(history, 
-                                 stock_abbreviation, 
+                                 abbreviation, 
                                  steps=steps, 
                                  window_length=window_length,
                                  start_idx=start_idx,
                                  start_date=sample_start_date)
         
-        self.sim = PortfolioSim(asset_names=stock_abbreviation,
+        self.sim = PortfolioSim(asset_names=abbreviation,
                                 trading_cost=trading_cost,
                                 time_cost=time_cost,
                                 steps=steps)
@@ -125,7 +127,7 @@ class raw_env(AECEnv):
         # 观察空间
         obs_space = Box(low=-np.inf, 
                         high=np.inf, 
-                        shape=(len(stock_abbreviation), window_length, history.shape[-1]),
+                        shape=(len(abbreviation), window_length, history.shape[-1]),
                         dtype = np.float32)
         self.observation_spaces = {a: obs_space for a in self.agents}
 

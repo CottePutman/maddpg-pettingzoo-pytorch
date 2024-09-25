@@ -36,8 +36,8 @@ class MADDPG:
         # create Agent(actor-critic) and replay buffer for each agent
         self.agents = {}
         self.buffers = {}
-        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.device = 'cpu'
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # self.device = 'cpu'
 
         for agent_id, (obs_dim, act_dim, act_type, softmax) in dim_info.items():
             # TODO 根据dim_info的act_type进行网络的选择

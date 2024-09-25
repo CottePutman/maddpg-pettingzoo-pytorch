@@ -20,20 +20,21 @@ if __name__ == '__main__':
 
     config = load_config(args.config_path)
     
-    env_name = config['environment']['env_name']
-    act_type = config['environment']['act_type'] or None
-    softmax = config['environment']['softmax'] or None
+    config_env = config['environment']
+    env_name = config_env['env_name']
+    act_type = config_env['act_type'] or None
     
-    episode_num = config['training']['episode_num']
-    episode_length = config['training']['episode_length']
-    learn_interval = config['training']['learn_interval']
-    random_steps = config['training']['random_steps']
-    tau = config['training']['tau']
-    gamma = config['training']['gamma']
-    buffer_capacity = config['training']['buffer_capacity']
-    batch_size = config['training']['batch_size']
-    actor_lr = config['training']['actor_lr']
-    critic_lr = config['training']['critic_lr']
+    config_train = config['training']
+    episode_num = config_train['episode_num']
+    episode_length = config_train['episode_length']
+    learn_interval = config_train['learn_interval']
+    random_steps = config_train['random_steps']
+    tau = config_train['tau']
+    gamma = config_train['gamma']
+    buffer_capacity = config_train['buffer_capacity']
+    batch_size = config_train['batch_size']
+    actor_lr = config_train['actor_lr']
+    critic_lr = config_train['critic_lr']
 
     # create folder to save result
     env_dir = os.path.join('./results', env_name)
@@ -44,7 +45,7 @@ if __name__ == '__main__':
     os.makedirs(result_dir)
 
     # MADDPG似乎不能支持二维观察值的初始化
-    env, dim_info = get_env(env_name, episode_length, act_type, softmax)
+    env, dim_info = get_env(env_name, episode_length, config_env)
     maddpg = MADDPG(dim_info,
                     act_type, 
                     buffer_capacity, 
@@ -54,7 +55,7 @@ if __name__ == '__main__':
                     result_dir)
 
     step = 0  # global step counter
-    agent_num = env.num_agents
+    # agent_num = env.num_agents
     # reward of each episode of each agent
     episode_rewards = {agent_id: np.zeros(episode_num) for agent_id in env.agents}
     for episode in range(episode_num):
