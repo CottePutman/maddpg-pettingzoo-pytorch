@@ -56,10 +56,11 @@ class DataGenerator(object):
         self._data = history.copy()  # all data
         self.asset_names = copy.copy(abbreviation)
 
-    def step(self):
+    def step(self, forward=True):
         # get observation matrix from history, exclude volume, maybe volume is useful as it
         # indicates how market total investment changes. Normalize could be critical here
-        self.step_count += 1
+        if forward:
+            self.step_count += 1
         obs = self.data[:, self.step_count:self.step_count + self.window_length, :].copy()
         # normalize obs with open price
 
@@ -68,6 +69,7 @@ class DataGenerator(object):
 
         # 最大可模拟范围超时检测
         truncation = self.step_count >= self.steps
+
         return obs, truncation, ground_truth_obs
 
     def reset(self):
@@ -90,8 +92,12 @@ class DataGenerator(object):
                self.data[:, self.step_count + self.window_length:self.step_count + self.window_length + 1, :].copy()
     
     # 允许不进行step而获得观察值
+    # 此处就是仅返回obs，别瞎几把改
     def observe(self):
-        return self.data[:, self.step_count:self.step_count + self.window_length, :].copy()
+        obs = self.data[:, self.step_count:self.step_count + self.window_length, :].copy()
+        # ground_truth_obs = self.data[:, self.step_count + self.window_length:self.step_count + self.window_length + 1, :].copy()
+        # truncation = self.step_count >= self.steps
+        return obs
 
 
 class PortfolioSim(object):

@@ -71,7 +71,6 @@ class raw_env(AECEnv):
                  steps=730,   # 2 years
                  render_mode=None, 
                  num_agents=2,
-                 num_steps=10e2,
                  trading_cost=0.0025,
                  time_cost=0.00,
                  window_length=50,
@@ -106,10 +105,7 @@ class raw_env(AECEnv):
                                 trading_cost=trading_cost,
                                 time_cost=time_cost,
                                 steps=steps)
-
-        self.num_steps = num_steps
-        self.timestep = 0
-        
+    
         self.agent_num = num_agents
         self.agents = [f"trader_{i}" for i in range(self.agent_num)]
         self.possible_agents = self.agents[:]
@@ -158,8 +154,6 @@ class raw_env(AECEnv):
         - 信息
 
         """
-        self.timestep = 0
-
         self.agents = self.possible_agents[:]
         self.rewards = {a: 0 for a in self.agents}
         self._cumulative_rewards = {a: 0 for a in self.agents}
@@ -169,13 +163,13 @@ class raw_env(AECEnv):
         self.kill_list = []
         self.dead_agents = []
 
+        self.sim.reset()
+        _, _ = self.src.reset()
+
         # 基于self.agents的必须在self.agent完成初始化后再初始化
         self._agent_selector.reinit(self.agents)
         self._agent_selector.reset()
         self.agent_selection = self._agent_selector.reset()
-
-        self.sim.reset()
-        _, _ = self.src.reset()
 
     def step(self, action):
         """
@@ -192,7 +186,9 @@ class raw_env(AECEnv):
             or self.truncations[agent]
         ):
             # 该方法会从各类数据中将已死亡代理的信息删除
-            return self._was_dead_step(action)
+            # 注意return的位置
+            self._was_dead_step(action)
+            return
 
         # 每轮agent_select完成后会返回所有代理的累计奖励
         # 故上一轮的遗留数据需要被清零
@@ -217,7 +213,12 @@ class raw_env(AECEnv):
         np.testing.assert_almost_equal(
             np.sum(weights), 1.0, 3, err_msg='weights should sum to 1. action="%s"' % weights)
 
-        observation, truncation, ground_truth_obs = self.src.step()
+        # 由于PettingZoo默认期待所有代理在一个cycle中都要执行动作
+        # 而若只使用一个DataGenerator就会导致当前一个代理已经将其step推到底后
+        # 下一个代理仍然会想继续访问数据，这就导致数据异常
+        # 必须要每个代理使用不同的Generator或保证其只更新一次
+        # 仅在为第一个代理时才置forward为True
+        observation, truncation, ground_truth_obs = self.src.step(forward = self._agent_selector.is_first())
 
         # concatenate observation with ones
         cash_observation = np.ones((1, self.window_length, observation.shape[2]))
@@ -240,19 +241,16 @@ class raw_env(AECEnv):
         info['next_obs'] = ground_truth_obs
 
         self.rewards[agent] = reward
-        # TODO 实现保证金机制
+
         # 资产为0时死亡
         # 在处理完当前代理的所有动作后暂时存入kill_list
         # 待到所有代理都处理完后再移除该代理
+        # TODO 应当确保所有代理能同时超时，否则就没有意义了
         if termination:
             self.kill_list.append(agent)
-        
-        # TODO info无限增长，暂时没什么用不启用了
-        # self.infos[agent].append(info)
             
         # 每轮循环结束后：
         if self._agent_selector.is_last():
-            self.timestep += 1
             # 仅从存活代理开始迭代
             # 管理死亡代理列表
             _live_agents = self.agents[:]
@@ -267,6 +265,9 @@ class raw_env(AECEnv):
             # 重置每轮的死亡代理列表
             self.kill_list = []
 
+            # 若发生超时，则一定是所有代理同时超时
+            self.truncations = {a: truncation for a in self.agents}
+
             # 从存活代理上重新初始化代理选择器
             self._agent_selector.reinit(_live_agents)
 
@@ -274,11 +275,11 @@ class raw_env(AECEnv):
         if len(self._agent_selector.agent_order):
             self.agent_selection = self._agent_selector.next()
 
-        # TODO 超时检测的实现机制暂不清楚
-        # truncate = self.timestep >= self.num_steps
-        # self.truncations = {a: truncate for a in self.agents}
+        # TODO info无限增长，暂时没什么用不启用了
+        # self.infos[agent].append(info)
 
         self._accumulate_rewards()
+        # 此处若truncations为true似乎会导致跳过Agent，使conversions的assert报错
         self._deads_step_first()
 
     def render(self, close=False):
@@ -299,11 +300,6 @@ class raw_env(AECEnv):
         从self.src获取当前时间步的观测值
         """
         return self.src.observe()
-    
-    def _get_last_day_price(self, agent):
-        # 利用正则匹配寻找代理对应的股票下标
-        index = int(re.compile(r'\d+').search(agent).group())
-        return self.stock_data[index]["close"][self.timestep]
     
     def plot(self, agent):
         # show a plot of portfolio vs mean market performance
