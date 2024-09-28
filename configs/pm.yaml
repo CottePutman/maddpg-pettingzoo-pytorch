@@ -1,10 +1,10 @@
 environment:
   env_name: pm
   steps: 730        # 2 years
-  num_agents: 2
+  num_agents: 3
   trading_cost: 0.0025
   time_cost: 0.00
-  window_length: 50
+  window_length: 5
   start_idx: 0
   sample_start_date:
   act_type:
@@ -12,10 +12,10 @@ environment:
   softmax: [0, 1]   # lower bound and upper bound of softmax
 
 training:
-  episode_num: 500
+  episode_num: 160
   episode_length: 25
   learn_interval: 100
-  random_steps: 10000   # should not be too small or the MADDPG.sample will malfunction
+  random_steps: 5000   # should not be too small (less than 1k) or the MADDPG.sample will malfunction
   tau: 0.02
   gamma: 0.95
   buffer_capacity: 1000000

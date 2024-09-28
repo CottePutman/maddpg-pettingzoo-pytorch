@@ -11,7 +11,8 @@ def get_history_and_abb():
     # read the data and choose the target stocks for training a toy example
     history, abbreviation = read_stock_history(filepath='utils/datasets/stocks_history_target.h5')
     history = history[:, :, :4]
-    target_stocks = ['AAPL', 'CMCSA', 'REGN']
+    # TODO 调入config
+    target_stocks = ['AAPL', 'ATVI', 'CMCSA', 'COST']
     training_date_start = '2012-08-13'
     training_date_end = '2015-08-13'    # three years training data
     training_index_start = date_to_index(training_date_start)
@@ -46,4 +47,6 @@ def softmax_and_mapping(x: np.ndarray, bound: list):
     
     e_x = np.exp(x - np.max(x))
     softmax = e_x / e_x.sum(axis=0)
-    return bound[0] + softmax * (bound[1] - bound[0])
+    mapping = bound[0] + softmax * (bound[1] - bound[0])
+    # 最终仅保留四位小数（万分之一）
+    return np.round(mapping, decimals=4)
