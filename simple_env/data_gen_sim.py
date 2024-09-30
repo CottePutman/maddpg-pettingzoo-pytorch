@@ -1,5 +1,6 @@
 import numpy as np
 from utils.data import date_to_index
+# from tpg.TPG import TemporalPortfolioGraph
 
 
 eps = 1e-8
@@ -33,7 +34,13 @@ def max_drawdown(returns):
 class DataGenerator(object):
     """Acts as data provider for each new episode."""
 
-    def __init__(self, history, abbreviation, steps=730, window_length=50, start_idx=0, start_date=None):
+    def __init__(self, 
+                 history, 
+                 abbreviation, 
+                 trade_steps=730, 
+                 window_length=50, 
+                 start_idx=0, 
+                 start_date=None):
         """
 
         Args:
@@ -47,7 +54,7 @@ class DataGenerator(object):
         assert(history.shape[0] == len(abbreviation)), 'Number of stock is not consistent'
         import copy
 
-        self.steps = steps + 1
+        self.num_steps = trade_steps + 1
         self.window_length = window_length
         self.start_idx = start_idx
         self.start_date = start_date
@@ -55,6 +62,8 @@ class DataGenerator(object):
         # make immutable class
         self._data = history.copy()  # all data
         self.asset_names = copy.copy(abbreviation)
+
+        self.is_reset = False
 
     def step(self, forward=True):
         # get observation matrix from history, exclude volume, maybe volume is useful as it
@@ -68,7 +77,7 @@ class DataGenerator(object):
         ground_truth_obs = self.data[:, self.step_count + self.window_length:self.step_count + self.window_length + 1, :].copy()
 
         # 最大可模拟范围超时检测
-        truncation = self.step_count >= self.steps
+        truncation = self.step_count >= self.num_steps
 
         return obs, truncation, ground_truth_obs
 
@@ -78,16 +87,18 @@ class DataGenerator(object):
         # get data for this episode, each episode might be different.
         if self.start_date is None:
             self.idx = np.random.randint(
-                low=self.window_length, high=self._data.shape[1] - self.steps)
+                low=self.window_length, high=self._data.shape[1] - self.num_steps)
         else:
             # compute index corresponding to start_date for repeatable sequence
             self.idx = date_to_index(self.start_date) - self.start_idx
-            assert self.idx >= self.window_length and self.idx <= self._data.shape[1] - self.steps, \
+            assert self.idx >= self.window_length and self.idx <= self._data.shape[1] - self.num_steps, \
                 'Invalid start date, must be window_length day after start date and simulation steps day before end date'
         # print('Start date: {}'.format(index_to_date(self.idx)))
-        data = self._data[:, self.idx - self.window_length:self.idx + self.steps + 1, :4]
+        data = self._data[:, self.idx - self.window_length:self.idx + self.num_steps + 1, :4]
         # apply augmentation?
         self.data = data
+
+        self.is_reset = True
         return self.data[:, self.step_count:self.step_count + self.window_length, :].copy(), \
                self.data[:, self.step_count + self.window_length:self.step_count + self.window_length + 1, :].copy()
     
@@ -95,8 +106,6 @@ class DataGenerator(object):
     # 此处就是仅返回obs，别瞎几把改
     def observe(self):
         obs = self.data[:, self.step_count:self.step_count + self.window_length, :].copy()
-        # ground_truth_obs = self.data[:, self.step_count + self.window_length:self.step_count + self.window_length + 1, :].copy()
-        # truncation = self.step_count >= self.steps
         return obs
 
 
@@ -113,8 +122,10 @@ class PortfolioSim(object):
         self.cost = trading_cost
         self.time_cost = time_cost
         self.steps = steps
+        self.infos = []
+        self.p0 = 1.0
 
-    def _step(self, w1, y1):
+    def step(self, w1, y1):
         """
         Step.
         w1 - new action of portfolio weights - e.g. [0.1,0.9,0.0]
@@ -144,7 +155,7 @@ class PortfolioSim(object):
         self.p0 = p1
 
         # if we run out of money, we're done (losing all the money)
-        termination = p1 == 0
+        terminate = p1 <= 0
 
         info = {
             "reward": reward,
@@ -157,7 +168,7 @@ class PortfolioSim(object):
             "cost": mu1,
         }
         self.infos.append(info)
-        return reward, info, termination
+        return reward, info, terminate
 
     def reset(self):
         self.infos = []

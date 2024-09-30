@@ -5,6 +5,15 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "TPG",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "tpg/TPG.py",
+            "console": "integratedTerminal",
+            "env": {"PYTHONPATH":"${workspaceRoot}"},
+            "envFile": "${workspaceFolder}/.env"
+        },
+        {
             "name": "pm",
             "type": "debugpy",
             "request": "launch",

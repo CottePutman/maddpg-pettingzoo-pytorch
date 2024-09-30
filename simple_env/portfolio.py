@@ -17,7 +17,10 @@ from utils.common import get_history_and_abb
 from simple_env.data_gen_sim import DataGenerator, PortfolioSim
 from simple_env.data_gen_sim import max_drawdown, sharpe
 
+from tpg.TPG import TemporalPortfolioGraph
 
+
+# 用于防止0成为除数的微小量
 eps = 1e-8
 
 
@@ -30,6 +33,7 @@ def env(render_mode=None, **kwargs):
     internal_render_mode = render_mode if render_mode != "ansi" else "human"
     target_history, target_stocks = get_history_and_abb()
     
+    # 注意**kwargs的用法
     kwargs['render_mode'] = internal_render_mode
     kwargs['history'] = target_history
     kwargs['abbreviation'] = target_stocks
@@ -37,8 +41,6 @@ def env(render_mode=None, **kwargs):
     # This wrapper is only for environments which print results to the terminal
     if render_mode == "ansi":
         env = wrappers.CaptureStdoutWrapper(env)
-    # this wrapper helps error handling for discrete action spaces
-    # env = wrappers.AssertOutOfBoundsWrapper(env)
     # 适用于连续动作空间的包装器
     env = wrappers.ClipOutOfBoundsWrapper(env)
     # Provides a wide vareity of helpful user errors
@@ -96,9 +98,10 @@ class raw_env(AECEnv):
         self.start_idx = start_idx
 
         # TODO 模仿MultiModel，为每个代理分配不同的DataGenerator与Sim
+        # 目前的多代理仍然是共用同一个Sim
         self.src = DataGenerator(history, 
                                  abbreviation, 
-                                 steps=steps, 
+                                 trade_steps=steps, 
                                  window_length=window_length,
                                  start_idx=start_idx,
                                  start_date=sample_start_date)
@@ -233,7 +236,7 @@ class raw_env(AECEnv):
         close_price_vector = observation[:, -1, 3]
         open_price_vector = observation[:, -1, 0]
         y1 = close_price_vector / open_price_vector
-        reward, info, termination = self.sim._step(weights, y1)
+        reward, info, termination = self.sim.step(weights, y1)
 
         # calculate return for buy and hold a bit of each asset
         info['market_value'] = np.cumprod([inf["return"] for inf in self.infos[agent] + [info]])[-1]

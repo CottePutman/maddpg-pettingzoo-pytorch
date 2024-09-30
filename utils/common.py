@@ -10,7 +10,8 @@ from utils.data import read_stock_history, date_to_index
 def get_history_and_abb():
     # read the data and choose the target stocks for training a toy example
     history, abbreviation = read_stock_history(filepath='utils/datasets/stocks_history_target.h5')
-    history = history[:, :, :4]
+    # 将volume也加入
+    history = history[:, :, :]
     # TODO 调入config
     target_stocks = ['AAPL', 'ATVI', 'CMCSA', 'COST']
     training_date_start = '2012-08-13'
