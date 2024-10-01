@@ -5,12 +5,25 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "GCN",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "tpg/GCN.py",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceRoot}"
+            },
+            "envFile": "${workspaceFolder}/.env"
+        },
+        {
             "name": "TPG",
             "type": "debugpy",
             "request": "launch",
             "program": "tpg/TPG.py",
             "console": "integratedTerminal",
-            "env": {"PYTHONPATH":"${workspaceRoot}"},
+            "env": {
+                "PYTHONPATH": "${workspaceRoot}"
+            },
             "envFile": "${workspaceFolder}/.env"
         },
         {

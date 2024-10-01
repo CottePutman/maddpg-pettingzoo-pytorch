@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 from torch_geometric.data import Data
+from tpg.GCN import GCNWithAttention
 from simple_env.data_gen_sim import DataGenerator
 from tpg.heat_kernel import heat_kernel
 from utils.common import get_history_and_abb
@@ -64,7 +65,8 @@ class TemporalPortfolioGraph:
         for i in range(0, self.num_asset):
             for j in range(i, self.num_asset):
                 if i == j: continue
-                weight = heat_kernel(self.x[i].numpy(), self.x[j].numpy())
+                # 基于论文中，设定λ为2
+                weight = heat_kernel(self.x[i].numpy(), self.x[j].numpy(), lambda_param=2)
                 self._add_similarity(i, j, weight)
 
         # Convert edge_index and edge_attr to tensors
@@ -75,13 +77,14 @@ class TemporalPortfolioGraph:
         return data
 
     @reset_check
-    def update_similarity(self, observation: np.array):
+    def update_similarity(self, features: np.array):
         """
         Update the node features using the observation from DataGenerator.
-        observation: np.array of shape (num_assets, observe_window, num_features)
+        
+        features: np.array of shape (num_assets, observe_window, num_features)
         """
         # 将时序数据转化为一维数据
-        flattened_observation = observation.reshape(self.num_asset, -1)
+        flattened_observation = features.reshape(self.num_asset, -1)
         
         # 转化为张量
         self.x = torch.tensor(flattened_observation, dtype=torch.float)
