@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from torch_geometric.data import Data
-from tpg.GCN import GCNWithAttention
+from tpg.GCN import GCNwithAttention
 from simple_env.data_gen_sim import DataGenerator
 from tpg.heat_kernel import heat_kernel
 from utils.common import get_history_and_abb

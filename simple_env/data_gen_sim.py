@@ -94,7 +94,7 @@ class DataGenerator(object):
             assert self.idx >= self.window_length and self.idx <= self._data.shape[1] - self.num_steps, \
                 'Invalid start date, must be window_length day after start date and simulation steps day before end date'
         # print('Start date: {}'.format(index_to_date(self.idx)))
-        data = self._data[:, self.idx - self.window_length:self.idx + self.num_steps + 1, :4]
+        data = self._data[:, self.idx - self.window_length:self.idx + self.num_steps + 1, :]
         # apply augmentation?
         self.data = data
 
