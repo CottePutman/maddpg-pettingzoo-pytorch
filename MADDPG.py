@@ -29,14 +29,14 @@ def setup_logger(filename):
 class MADDPG:
     """A MADDPG(Multi Agent Deep Deterministic Policy Gradient) agent"""
 
-    def __init__(self, dim_info, act_type, capacity, batch_size, actor_lr, critic_lr, res_dir):
+    def __init__(self, dim_info, act_type, capacity, batch_size, actor_lr, critic_lr, res_dir, device):
         # sum all the dims of each agent to get input dim for critic
         # 调用np.prod()对多维值进行相乘操作,val[0]是观察空间，val[1]是动作空间
         global_obs_act_dim = sum(np.prod(val[0]) for val in dim_info.values()) + sum(np.prod(val[1]) for val in dim_info.values())
         # create Agent(actor-critic) and replay buffer for each agent
         self.agents = {}
         self.buffers = {}
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device
         # self.device = 'cpu'
 
         for agent_id, (obs_dim, act_dim, act_type, softmax) in dim_info.items():

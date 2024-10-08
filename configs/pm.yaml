@@ -3,7 +3,7 @@ environment:
   steps: 730        # 2 years
   num_agents: 1
   trading_cost: 0.0025
-  time_cost: 0.00
+  time_cost: 0.00   # 可以理解为机会成本
   window_length: 1  # To match the new paper settings
   start_idx: 0
   sample_start_date:

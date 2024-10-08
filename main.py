@@ -3,8 +3,12 @@ import yaml
 import os
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 from MADDPG import MADDPG
 from utils.env import get_env
+
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def load_config(path):
@@ -45,14 +49,15 @@ if __name__ == '__main__':
     os.makedirs(result_dir)
 
     # MADDPG似乎不能支持二维观察值的初始化
-    env, dim_info = get_env(env_name, episode_length, config_env)
+    env, dim_info = get_env(env_name, episode_length, config_env, device)
     maddpg = MADDPG(dim_info,
                     act_type, 
                     buffer_capacity, 
                     batch_size, 
                     actor_lr, 
                     critic_lr,
-                    result_dir)
+                    result_dir,
+                    device)
 
     step = 0  # global step counter
     # agent_num = env.num_agents

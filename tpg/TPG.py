@@ -12,7 +12,8 @@ import networkx as nx
 import matplotlib.pyplot as plt
 
 
-# TODO TPG与DG的脱轨处理，TPG应该可以只依赖PM_Env传递的信息进行初始化、更新
+# TODO 上GPU
+# .to(device)应该只在进行大规模矩阵运算的时候使用
 class TemporalPortfolioGraph:
     """
     构建一个资产之间的时序相似度图，并且依据时间戳进行更新
@@ -49,7 +50,7 @@ class TemporalPortfolioGraph:
         """
         self.num_asset = num_asset
         # 初始化边邻接矩阵
-        self.weighted_adj = torch.zeros((self.num_asset, self.num_asset), dtype=torch.float).to(self.device)
+        self.weighted_adj = torch.zeros((self.num_asset, self.num_asset), dtype=torch.float)
 
         # 初始化节点信息，最终的self.x形状应为(num_assets, node_features)，例如(4, 5+1+1+5=12)
         # TODO Volume值过大的问题，暂时抛弃Volume
@@ -66,7 +67,8 @@ class TemporalPortfolioGraph:
         self.gcn = GCNwithAttention(num_assets=self.num_asset, 
                                     input_dim=self.x.shape[1], 
                                     hidden_dim=self.hidden_dim, 
-                                    output_dim=self.output_dim)
+                                    output_dim=self.output_dim,
+                                    device=self.device)
 
         self._update_similarity(init=True)
 
@@ -126,7 +128,7 @@ class TemporalPortfolioGraph:
         optimizer.step()
 
         # 更新TPG边权重
-        self._update_similarity(embedding=z_context)
+        self._update_similarity(embedding=z_context.cpu())
 
     def observe(self):
         """
@@ -135,7 +137,7 @@ class TemporalPortfolioGraph:
         z_context, global_context = self.gcn(self.x, self.weighted_adj)
         # TODO 此处的返回值还需要结合task embedding
         # 这些返回值给MADDPG时不再需要继续追踪梯度
-        return global_context.detach().numpy()
+        return global_context.cpu().detach().numpy()
     
     def get_pyg_object(self):
         """

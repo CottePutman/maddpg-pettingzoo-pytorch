@@ -79,7 +79,8 @@ class raw_env(AECEnv):
                  window_length=1,
                  start_idx=0,
                  sample_start_date=None,
-                 embedding_dim=10):
+                 embedding_dim=10,
+                 device='cpu'):
         """
         An environment for financial portfolio management.
         
@@ -99,6 +100,7 @@ class raw_env(AECEnv):
         self.window_length = window_length
         self.num_asset = history.shape[0]
         self.start_idx = start_idx
+        self.device = device
 
         # TODO 模仿MultiModel，为每个代理分配不同的DataGenerator与Sim
         # TODO 每个代理应该有自己的TPG，或者是所有资产在一起共用一张TPG？
@@ -115,7 +117,8 @@ class raw_env(AECEnv):
                                 time_cost=time_cost,
                                 steps=steps)
         
-        self.tpg = TemporalPortfolioGraph(output_dim=embedding_dim)
+        self.tpg = TemporalPortfolioGraph(output_dim=embedding_dim,
+                                          device=self.device)
     
         self.agent_num = num_agents
         self.agents = [f"trader_{i}" for i in range(self.agent_num)]

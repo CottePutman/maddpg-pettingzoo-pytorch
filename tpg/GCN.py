@@ -10,13 +10,14 @@ class GCNWeightedLayer(nn.Module):
     """
     支持对带权边的处理
     """
-    def __init__(self, in_feature, out_feature, num_assets) -> None:
+    def __init__(self, in_feature, out_feature, num_assets, device) -> None:
         super(GCNWeightedLayer, self).__init__()
-        self.weight = nn.Parameter(torch.FloatTensor(in_feature, out_feature))
+        self.device = device
+        self.weight = nn.Parameter(torch.FloatTensor(in_feature, out_feature)).to(self.device)
         nn.init.xavier_uniform_(self.weight)
 
         # 使用可学习的参数矩阵来规避初始化时全0边权重导致的问题
-        self.learnable_adj = nn.Parameter(torch.rand(num_assets, num_assets))
+        self.learnable_adj = nn.Parameter(torch.rand(num_assets, num_assets)).to(self.device)
 
     def forward(self, x, adj):
         """
@@ -24,15 +25,15 @@ class GCNWeightedLayer(nn.Module):
         adj: Weighted Adjacency matrix (num_nodes, num_nodes)
         """     
         # 添加噪声，也是为减轻全0问题
-        noise_adj = adj + self.learnable_adj + eps * torch.rand_like(adj)
+        noise_adj = (adj + self.learnable_adj + eps * torch.rand_like(adj)).to(self.device)
 
         # 添加自循环，保证即便边全为0时也至少能将节点自身的特征传递给下一层
-        looped_adj = noise_adj + torch.eye(noise_adj.size(0))
+        looped_adj = noise_adj + torch.eye(noise_adj.size(0)).to(self.device)
 
         # 邻接矩阵标准化
-        degree = torch.sum(looped_adj, dim=1)                               # 对加权邻接矩阵按行求和
-        degree_inv_sqrt = torch.diag(torch.pow(degree + eps, -0.5))         # D^(-1/2)
-        normalized_adj = degree_inv_sqrt @ looped_adj @ degree_inv_sqrt     # B̃ = D^(-1/2) * B * D^(-1/2)
+        degree = torch.sum(looped_adj, dim=1)                                           # 对加权邻接矩阵按行求和
+        degree_inv_sqrt = torch.diag(torch.pow(degree + eps, -0.5)).to(self.device)     # D^(-1/2)
+        normalized_adj = degree_inv_sqrt @ looped_adj @ degree_inv_sqrt                 # B̃ = D^(-1/2) * B * D^(-1/2)
 
         # 图卷积操作
         support = torch.matmul(x, self.weight)
@@ -46,20 +47,21 @@ class GCNwithAttention(nn.Module):
 
     Based of [Yang 2023](https://doi.org/10.1016/j.knosys.2023.110905)
     """
-    def __init__(self, num_assets, input_dim, hidden_dim, output_dim):
+    def __init__(self, num_assets, input_dim, hidden_dim, output_dim, device):
         super(GCNwithAttention, self).__init__()
         # Define 3 GCN layers
-        self.conv1 = GCNWeightedLayer(input_dim, hidden_dim, num_assets)
-        self.conv2 = GCNWeightedLayer(hidden_dim, hidden_dim, num_assets)
-        self.conv3 = GCNWeightedLayer(hidden_dim, output_dim, num_assets)
+        self.conv1 = GCNWeightedLayer(input_dim, hidden_dim, num_assets, device)    
+        self.conv2 = GCNWeightedLayer(hidden_dim, hidden_dim, num_assets, device)
+        self.conv3 = GCNWeightedLayer(hidden_dim, output_dim, num_assets, device)
         
         # Define attention mechanism parameters
-        self.q = nn.Parameter(torch.randn(output_dim, 1))   # Attention vector
-        self.W = nn.Linear(output_dim, output_dim)          # Parameter matrix
-        self.b = nn.Parameter(torch.randn(1))               # Bias term
+        self.q = nn.Parameter(torch.randn(output_dim, 1)).to(device)   # Attention vector
+        self.W = nn.Linear(output_dim, output_dim).to(device)          # Parameter matrix
+        self.b = nn.Parameter(torch.randn(1)).to(device)               # Bias term
         
         # Number of assets
         self.num_assets = num_assets
+        self.device = device
 
     def forward(self, x, weighted_adj):
         """
@@ -69,6 +71,9 @@ class GCNwithAttention(nn.Module):
         - x: Input features of nodes (e.g., features of assets) [num_assets, feature_dim]
         - edge_index: Edge connections between nodes (e.g., asset correlation graph)
         """
+        x = x.to(self.device)
+        weighted_adj = weighted_adj.to(self.device)
+
         # Step 1: GCN layers (Eq 10)
         x = self.conv1(x, weighted_adj)            # 第一层
         x = F.relu(x)
@@ -93,6 +98,8 @@ class GCNwithAttention(nn.Module):
         Returns:
         - attn_scores: Attention weights [num_assets, 1]
         """
+        z_context = z_context.to(self.device)
+        
         # Apply attention mechanism: q^T * tanh(W * z_context + b)
         attn_scores = torch.tanh(self.W(z_context)) @ self.q + self.b
         # Normalize using softmax
@@ -110,6 +117,9 @@ class GCNwithAttention(nn.Module):
         Returns:
         - mi_loss: Mutual Information loss
         """
+        local_info = local_info.to(self.device)
+        z_context = z_context.to(self.device)
+
         # Combine local information into a single vector per asset
         local_features = local_info.view(-1)  # Concatenate (s_i, a_i, r_i, s'_i)
         z_context = z_context.view(-1)

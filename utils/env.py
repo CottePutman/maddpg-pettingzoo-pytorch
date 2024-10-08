@@ -4,7 +4,7 @@ from portfolio import PortfolioEnv
 from simple_env import portfolio, simple_aec_market
 
 
-def get_env(env_name, ep_len=25, env_config: dict = None):
+def get_env(env_name, ep_len=25, env_config: dict = None, device='cpu'):
     """
     create environment and get observation and action dimension of each agent in this environment
     """
@@ -34,7 +34,8 @@ def get_env(env_name, ep_len=25, env_config: dict = None):
                                              time_cost=env_config['time_cost'],
                                              window_length=env_config['window_length'],
                                              start_idx=env_config['start_idx'],
-                                             sample_start_date=env_config['sample_start_date'])
+                                             sample_start_date=env_config['sample_start_date'],
+                                             device=device)
         else:
             new_env = portfolio.parallel_env(render_mode='human')
 
