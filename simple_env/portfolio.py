@@ -2,7 +2,6 @@ import functools
 import pprint
 import matplotlib as plt
 
-import re
 import numpy as np
 import pandas as pd
 from gymnasium.spaces import Box
@@ -11,7 +10,7 @@ from pettingzoo import AECEnv
 from pettingzoo.utils import wrappers, agent_selector
 from pettingzoo.utils.conversions import parallel_wrapper_fn
 
-from utils.data import date_to_index, index_to_date
+from utils.data import index_to_date
 from utils.common import get_history_and_abb
 
 from simple_env.data_gen_sim import DataGenerator, PortfolioSim
@@ -59,9 +58,9 @@ class raw_env(AECEnv):
     Financial portfolio management is the process of constant redistribution of a fund into different
     financial products.
     
-    Based on [Jiang 2017](https://arxiv.org/abs/1706.10059)
+    Based on [Jiang 2017](https://arxiv.org/abs/1706.10059) 
+    and is modified based on [Yang 2023](https://doi.org/10.1016/j.knosys.2023.110905)
     """
-
     metadata = {
         "render_modes": ["human", "ansi"],
         "name": "simple_market",
@@ -77,22 +76,25 @@ class raw_env(AECEnv):
                  num_agents=2,
                  trading_cost=0.0025,
                  time_cost=0.00,
-                 window_length=50,
+                 window_length=1,
                  start_idx=0,
-                 sample_start_date=None):
+                 sample_start_date=None,
+                 embedding_dim=256):
         """
         An environment for financial portfolio management.
         
-        Params:
-            steps - steps in episode
-            scale - scale data and each episode (except return)
-            augment - fraction to randomly shift data by
-            trading_cost - cost of trade as a fraction
-            time_cost - cost of holding as a fraction
-            window_length - how many past observations to return
-            start_idx - The number of days from '2012-08-13' of the dataset
-            sample_start_date - The start date sampling from the history
+        Args:
+        -   steps: steps in episode
+        -   scale: scale data and each episode (except return)
+        -   augment: fraction to randomly shift data by
+        -   trading_cost: cost of trade as a fraction
+        -   time_cost: cost of holding as a fraction
+        -   window_length: how many past observations to return
+        -   start_idx: The number of days from '2012-08-13' of the dataset
+        -   sample_start_date: The start date sampling from the history
         """
+        if window_length != 1: raise RuntimeWarning("Window length should be 1.")
+        
         self.window_length = window_length
         self.num_stocks = history.shape[0]
         self.start_idx = start_idx
@@ -110,6 +112,9 @@ class raw_env(AECEnv):
                                 trading_cost=trading_cost,
                                 time_cost=time_cost,
                                 steps=steps)
+        
+        self.tpg = TemporalPortfolioGraph(output_dim=embedding_dim,
+                                          data_gen=self.src)
     
         self.agent_num = num_agents
         self.agents = [f"trader_{i}" for i in range(self.agent_num)]
@@ -127,11 +132,22 @@ class raw_env(AECEnv):
                            dtype=np.float32)
         self.action_spaces = {a: action_space for a in self.agents}
 
-        # 观察空间
-        obs_space = Box(low=-np.inf, 
+        # 状态空间
+        # 根据论文中的数据，似乎并没有观察窗口这一说法
+        # 所有的state都是当前时间的各类数据
+        # 修改后的state形状为(num_asset, 1, [open, close, high, low, volume])
+        # 以这种形式暂时保留观察窗口的存在
+        state_space = Box(low=0, 
                         high=np.inf, 
                         shape=(len(abbreviation), window_length, history.shape[-1]),
                         dtype = np.float32)
+
+        # 观察空间
+        # 按照论文，整个模型的观察空间即一个256维的联合嵌入向量Z_t
+        obs_space = Box(low=-np.inf,
+                        high=np.inf,
+                        shape=(embedding_dim, 1),
+                        dtype=np.float32)
         self.observation_spaces = {a: obs_space for a in self.agents}
 
         self.rewards = {a: 0 for a in self.agents}
@@ -169,7 +185,8 @@ class raw_env(AECEnv):
         self.dead_agents = []
 
         self.sim.reset()
-        _, _ = self.src.reset()
+        self.src.reset()
+        self.tpg.reset()
 
         # 基于self.agents的必须在self.agent完成初始化后再初始化
         self._agent_selector.reinit(self.agents)
@@ -302,9 +319,10 @@ class raw_env(AECEnv):
     
     def observe(self, agent):
         """
-        从self.src获取当前时间步的观测值
+        从TPG的GCN模型获得当前时间步的嵌入
         """
-        return self.src.observe()
+        # return self.src.observe()
+        return self.tpg
     
     def plot(self, agent):
         # show a plot of portfolio vs mean market performance

@@ -1,6 +1,5 @@
 import numpy as np
 from utils.data import date_to_index
-# from tpg.TPG import TemporalPortfolioGraph
 
 
 eps = 1e-8
@@ -38,7 +37,7 @@ class DataGenerator(object):
                  history, 
                  abbreviation, 
                  trade_steps=730, 
-                 window_length=50, 
+                 window_length=1, 
                  start_idx=0, 
                  start_date=None):
         """

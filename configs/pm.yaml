@@ -4,7 +4,7 @@ environment:
   num_agents: 3
   trading_cost: 0.0025
   time_cost: 0.00
-  window_length: 5
+  window_length: 1  # To match the new paper settings
   start_idx: 0
   sample_start_date:
   act_type:

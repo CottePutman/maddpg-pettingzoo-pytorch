@@ -1,9 +1,36 @@
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 
 
-class GCNwithAttention(torch.nn.Module):
+class GCNWeightedLayer(nn.Module):
+    """
+    支持对带权边的处理
+    """
+    def __init__(self, in_feature, out_feature) -> None:
+        super(GCNWeightedLayer, self).__init__()
+        self.weight = nn.Parameter(torch.FloatTensor(in_feature, out_feature))
+        nn.init.xavier_uniform_(self.weight)
+
+    def forward(self, x, adj):
+        """
+        x: Node features (num_nodes, in_features)
+        adj: Weighted Adjacency matrix (num_nodes, num_nodes)
+        """     
+        # 邻接矩阵标准化
+        # TODO 对于一个全为0的初始化带权邻接矩阵，算法会出现问题
+        degree = torch.sum(adj, dim=1)     # 对加权邻接矩阵按行求和
+        degree_inv_sqrt = torch.diag(degree.pow(-0.5))  # D^(-1/2)
+        normalized_adj = degree_inv_sqrt @ adj @ degree_inv_sqrt   # B̃ = D^(-1/2) * B * D^(-1/2)
+
+        # 图卷积操作
+        support = torch.matmul(x, self.weight)
+        out = torch.matmul(normalized_adj, support) # Ã * X * W
+        return out
+
+
+class GCNwithAttention(nn.Module):
     """
     GCN with Attention.
 
@@ -12,19 +39,19 @@ class GCNwithAttention(torch.nn.Module):
     def __init__(self, num_assets, input_dim, hidden_dim, output_dim):
         super(GCNwithAttention, self).__init__()
         # Define 3 GCN layers
-        self.conv1 = GCNConv(input_dim, hidden_dim)
-        self.conv2 = GCNConv(hidden_dim, hidden_dim)
-        self.conv3 = GCNConv(hidden_dim, output_dim)
+        self.conv1 = GCNWeightedLayer(input_dim, hidden_dim)
+        self.conv2 = GCNWeightedLayer(hidden_dim, hidden_dim)
+        self.conv3 = GCNWeightedLayer(hidden_dim, output_dim)
         
         # Define attention mechanism parameters
-        self.q = torch.nn.Parameter(torch.randn(output_dim, 1))  # Attention vector
-        self.W = torch.nn.Linear(output_dim, output_dim)  # Parameter matrix
-        self.b = torch.nn.Parameter(torch.randn(1))  # Bias term
+        self.q = nn.Parameter(torch.randn(output_dim, 1))  # Attention vector
+        self.W = nn.Linear(output_dim, output_dim)  # Parameter matrix
+        self.b = nn.Parameter(torch.randn(1))  # Bias term
         
         # Number of assets
         self.num_assets = num_assets
 
-    def forward(self, x, edge_index):
+    def forward(self, x, weighted_adj):
         """
         Forward pass through the GCN and attention mechanism.
         
@@ -33,9 +60,11 @@ class GCNwithAttention(torch.nn.Module):
         - edge_index: Edge connections between nodes (e.g., asset correlation graph)
         """
         # Step 1: GCN layers (Eq 10)
-        x = F.relu(self.conv1(x, edge_index))   # First GCN layer
-        x = F.relu(self.conv2(x, edge_index))   # Second GCN layer
-        z_context = self.conv3(x, edge_index)   # Third Layer (final embeddings Z_context)
+        x = self.conv1(x, weighted_adj)            # 第一层
+        x = F.relu(x)
+        x = self.conv2(x, weighted_adj)            # 第二层
+        x = F.relu(x)
+        z_context = self.conv3(x, weighted_adj)    # 第三层（即最终Z_context）
         
         # TODO 这里的Global_Context感觉有点不对
         # Step 2: Attention mechanism (Eq 11)
@@ -85,20 +114,21 @@ class GCNwithAttention(torch.nn.Module):
 if __name__ == '__main__':
     # Define parameters
     num_assets = 4
-    input_dim = 4  # For example, the feature vector size (Open/Close/High/Low)
-    hidden_dim = 16
-    output_dim = 16  # Size of the final embeddings
+    input_dim = 12    # For example, the feature vector size for each node is [s_t=5, a_t=1, r_t=1, s_t+1=5]
+    hidden_dim = 512
+    output_dim = 128  # Size of the final embeddings
 
     # Create a GCNwithAttention instance
     model = GCNwithAttention(num_assets, input_dim, hidden_dim, output_dim)
 
     # Example data
+    # Input features (num_assets, feature_size)
     x = torch.randn((num_assets, input_dim))  # Asset features
-    edge_index = torch.tensor([[0, 1], [1, 0]])  # Asset similarity edges (example)
-    local_info = [torch.randn((num_assets, 4)) for _ in range(4)]  # Local (s_i, a_i, r_i, s'_i)
+    edge_weights = torch.rand(num_assets, num_assets)
+    local_info = [torch.randn((num_assets, int(output_dim/4))) for _ in range(4)]  # Local (s_i, a_i, r_i, s'_i)
 
     # Forward pass
-    z_context, global_context = model(x, edge_index)
+    z_context, global_context = model(x, edge_weights)
 
     # Compute MI loss
     mi_loss = model.compute_mi_loss(local_info, z_context)

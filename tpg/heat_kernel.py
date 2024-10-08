@@ -4,6 +4,8 @@ def taylor_expansion(x, terms=5):
     """
     Compute the Taylor series approximation of exp(x) up to a specified number of terms.
     
+    需要注意，泰勒展开式的前提是二者等价无穷小
+
     Parameters
     ----------
     x : float
@@ -45,12 +47,25 @@ def heat_kernel(e_i, e_j, lambda_param=1.0, taylor_terms=5):
     """
     # Calculate the squared Euclidean distance between the two vectors
     distance_sq = np.sum((e_i - e_j)**2)
+
+    # Limit distance to prevent numerical issues with large values
+    distance_sq = np.clip(distance_sq, 0, 1e6)  # Cap the distance for stability
     
     # Calculate the argument for the exponential function
     exp_argument = -distance_sq / lambda_param
+
+    # Ensure exp_argument is within a reasonable range to avoid overflow
+    if exp_argument < -10:
+        # If the argument is too negative, return a small similarity directly (since e^(-large) is ~0)
+        return 0.0
     
     # Use Taylor series to approximate the exponential function
-    similarity = taylor_expansion(exp_argument, terms=taylor_terms)
+    # TODO 泰勒展开式目前不太对
+    # similarity = taylor_expansion(exp_argument, terms=taylor_terms)
+    similarity = np.exp(exp_argument)
+
+    # Ensure the similarity is between 0 and 1 (it can grow due to Taylor expansion)
+    similarity = np.clip(similarity, 0, 1)
     
     return similarity
 
