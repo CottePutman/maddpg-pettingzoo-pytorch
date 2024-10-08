@@ -3,30 +3,40 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 
+# 用于防止0成为除数的微小量
+eps = 1e-8
 
 class GCNWeightedLayer(nn.Module):
     """
     支持对带权边的处理
     """
-    def __init__(self, in_feature, out_feature) -> None:
+    def __init__(self, in_feature, out_feature, num_assets) -> None:
         super(GCNWeightedLayer, self).__init__()
         self.weight = nn.Parameter(torch.FloatTensor(in_feature, out_feature))
         nn.init.xavier_uniform_(self.weight)
+
+        # 使用可学习的参数矩阵来规避初始化时全0边权重导致的问题
+        self.learnable_adj = nn.Parameter(torch.rand(num_assets, num_assets))
 
     def forward(self, x, adj):
         """
         x: Node features (num_nodes, in_features)
         adj: Weighted Adjacency matrix (num_nodes, num_nodes)
         """     
+        # 添加噪声，也是为减轻全0问题
+        noise_adj = adj + self.learnable_adj + eps * torch.rand_like(adj)
+
+        # 添加自循环，保证即便边全为0时也至少能将节点自身的特征传递给下一层
+        looped_adj = noise_adj + torch.eye(noise_adj.size(0))
+
         # 邻接矩阵标准化
-        # TODO 对于一个全为0的初始化带权邻接矩阵，算法会出现问题
-        degree = torch.sum(adj, dim=1)     # 对加权邻接矩阵按行求和
-        degree_inv_sqrt = torch.diag(degree.pow(-0.5))  # D^(-1/2)
-        normalized_adj = degree_inv_sqrt @ adj @ degree_inv_sqrt   # B̃ = D^(-1/2) * B * D^(-1/2)
+        degree = torch.sum(looped_adj, dim=1)                               # 对加权邻接矩阵按行求和
+        degree_inv_sqrt = torch.diag(torch.pow(degree + eps, -0.5))         # D^(-1/2)
+        normalized_adj = degree_inv_sqrt @ looped_adj @ degree_inv_sqrt     # B̃ = D^(-1/2) * B * D^(-1/2)
 
         # 图卷积操作
         support = torch.matmul(x, self.weight)
-        out = torch.matmul(normalized_adj, support) # Ã * X * W
+        out = torch.matmul(normalized_adj, support)     # Ã * X * W
         return out
 
 
@@ -39,14 +49,14 @@ class GCNwithAttention(nn.Module):
     def __init__(self, num_assets, input_dim, hidden_dim, output_dim):
         super(GCNwithAttention, self).__init__()
         # Define 3 GCN layers
-        self.conv1 = GCNWeightedLayer(input_dim, hidden_dim)
-        self.conv2 = GCNWeightedLayer(hidden_dim, hidden_dim)
-        self.conv3 = GCNWeightedLayer(hidden_dim, output_dim)
+        self.conv1 = GCNWeightedLayer(input_dim, hidden_dim, num_assets)
+        self.conv2 = GCNWeightedLayer(hidden_dim, hidden_dim, num_assets)
+        self.conv3 = GCNWeightedLayer(hidden_dim, output_dim, num_assets)
         
         # Define attention mechanism parameters
-        self.q = nn.Parameter(torch.randn(output_dim, 1))  # Attention vector
-        self.W = nn.Linear(output_dim, output_dim)  # Parameter matrix
-        self.b = nn.Parameter(torch.randn(1))  # Bias term
+        self.q = nn.Parameter(torch.randn(output_dim, 1))   # Attention vector
+        self.W = nn.Linear(output_dim, output_dim)          # Parameter matrix
+        self.b = nn.Parameter(torch.randn(1))               # Bias term
         
         # Number of assets
         self.num_assets = num_assets
@@ -101,7 +111,8 @@ class GCNwithAttention(nn.Module):
         - mi_loss: Mutual Information loss
         """
         # Combine local information into a single vector per asset
-        local_features = torch.cat(local_info, dim=1)  # Concatenate (s_i, a_i, r_i, s'_i)
+        local_features = local_info.view(-1)  # Concatenate (s_i, a_i, r_i, s'_i)
+        z_context = z_context.view(-1)
         
         # TODO 使用论文中公式21~25所使用的MI损失函数
         # 此处由于并未使用真正的MI损失函数，故需要通过输出层参数out_dim来使local_features和z_context的维度匹配
@@ -124,11 +135,11 @@ if __name__ == '__main__':
     # Example data
     # Input features (num_assets, feature_size)
     x = torch.randn((num_assets, input_dim))  # Asset features
-    edge_weights = torch.rand(num_assets, num_assets)
+    weighted_adj = torch.rand(num_assets, num_assets)
     local_info = [torch.randn((num_assets, int(output_dim/4))) for _ in range(4)]  # Local (s_i, a_i, r_i, s'_i)
 
     # Forward pass
-    z_context, global_context = model(x, edge_weights)
+    z_context, global_context = model(x, weighted_adj)
 
     # Compute MI loss
     mi_loss = model.compute_mi_loss(local_info, z_context)

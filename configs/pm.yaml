@@ -1,7 +1,7 @@
 environment:
   env_name: pm
   steps: 730        # 2 years
-  num_agents: 3
+  num_agents: 1
   trading_cost: 0.0025
   time_cost: 0.00
   window_length: 1  # To match the new paper settings

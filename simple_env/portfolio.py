@@ -79,7 +79,7 @@ class raw_env(AECEnv):
                  window_length=1,
                  start_idx=0,
                  sample_start_date=None,
-                 embedding_dim=256):
+                 embedding_dim=10):
         """
         An environment for financial portfolio management.
         
@@ -92,14 +92,16 @@ class raw_env(AECEnv):
         -   window_length: how many past observations to return
         -   start_idx: The number of days from '2012-08-13' of the dataset
         -   sample_start_date: The start date sampling from the history
+        -   embedding_dim: 最终的嵌入Z_t维度，也是观察空间的维度
         """
         if window_length != 1: raise RuntimeWarning("Window length should be 1.")
         
         self.window_length = window_length
-        self.num_stocks = history.shape[0]
+        self.num_asset = history.shape[0]
         self.start_idx = start_idx
 
         # TODO 模仿MultiModel，为每个代理分配不同的DataGenerator与Sim
+        # TODO 每个代理应该有自己的TPG，或者是所有资产在一起共用一张TPG？
         # 目前的多代理仍然是共用同一个Sim
         self.src = DataGenerator(history, 
                                  abbreviation, 
@@ -113,8 +115,7 @@ class raw_env(AECEnv):
                                 time_cost=time_cost,
                                 steps=steps)
         
-        self.tpg = TemporalPortfolioGraph(output_dim=embedding_dim,
-                                          data_gen=self.src)
+        self.tpg = TemporalPortfolioGraph(output_dim=embedding_dim)
     
         self.agent_num = num_agents
         self.agents = [f"trader_{i}" for i in range(self.agent_num)]
@@ -126,6 +127,7 @@ class raw_env(AECEnv):
         
         # 动作即为每个资产所占的比重
         # 初始化要用到np.ndarray
+        # 动作空间的第一个维度表示不投资，把钱以现金的形式抓在手上
         action_space = Box(low=0, 
                            high=1, 
                            shape=(len(self.src.asset_names) + 1,),  # 注意双逗号的意义
@@ -138,9 +140,10 @@ class raw_env(AECEnv):
         # 修改后的state形状为(num_asset, 1, [open, close, high, low, volume])
         # 以这种形式暂时保留观察窗口的存在
         state_space = Box(low=0, 
-                        high=np.inf, 
-                        shape=(len(abbreviation), window_length, history.shape[-1]),
-                        dtype = np.float32)
+                          high=np.inf, 
+                          shape=(len(abbreviation), window_length, history.shape[-1]),
+                          dtype = np.float32)
+        self.state_spaces = {a: state_space for a in self.agents}
 
         # 观察空间
         # 按照论文，整个模型的观察空间即一个256维的联合嵌入向量Z_t
@@ -175,6 +178,7 @@ class raw_env(AECEnv):
         - 信息
 
         """
+        # TODO 考虑更多的重置可能性，如随机化股票
         self.agents = self.possible_agents[:]
         self.rewards = {a: 0 for a in self.agents}
         self._cumulative_rewards = {a: 0 for a in self.agents}
@@ -186,7 +190,7 @@ class raw_env(AECEnv):
 
         self.sim.reset()
         self.src.reset()
-        self.tpg.reset()
+        self.tpg.reset(self.num_asset, [self.src.observe(), self.src.next_observe()])
 
         # 基于self.agents的必须在self.agent完成初始化后再初始化
         self._agent_selector.reinit(self.agents)
@@ -235,11 +239,14 @@ class raw_env(AECEnv):
         np.testing.assert_almost_equal(
             np.sum(weights), 1.0, 3, err_msg='weights should sum to 1. action="%s"' % weights)
 
+        # TODO 还是得实现每个代理使用不同的Sim或者DG
+        # 下述的observation等和实际传递给policy的observation并不是一个东西
         # 由于PettingZoo默认期待所有代理在一个cycle中都要执行动作
         # 而若只使用一个DataGenerator就会导致当前一个代理已经将其step推到底后
         # 下一个代理仍然会想继续访问数据，这就导致数据异常
         # 必须要每个代理使用不同的Generator或保证其只更新一次
         # 仅在为第一个代理时才置forward为True
+        # ground_truth_obs似乎没有作用
         observation, truncation, ground_truth_obs = self.src.step(forward = self._agent_selector.is_first())
 
         # concatenate observation with ones
@@ -253,8 +260,8 @@ class raw_env(AECEnv):
         close_price_vector = observation[:, -1, 3]
         open_price_vector = observation[:, -1, 0]
         y1 = close_price_vector / open_price_vector
-        reward, info, termination = self.sim.step(weights, y1)
-
+        pf_reward, rewards, info, termination = self.sim.step(weights, y1)
+  
         # calculate return for buy and hold a bit of each asset
         info['market_value'] = np.cumprod([inf["return"] for inf in self.infos[agent] + [info]])[-1]
         # add dates
@@ -262,16 +269,27 @@ class raw_env(AECEnv):
         info['steps'] = self.src.step_count
         info['next_obs'] = ground_truth_obs
 
-        self.rewards[agent] = reward
+        # TODO 还要为每个资产分配奖励！
+        # 代理的总奖励等于所有资产的奖励之和（收益）
+        self.rewards[agent] = pf_reward
+
+        # TODO 多代理情况
+        # 更新TPG
+        obs = self.src.observe()
+        act = action
+        rwd = rewards
+        next_obs = self.src.next_observe()
+        node_features = [obs, act, rwd, next_obs]
+        self.tpg.update(node_features)
 
         # 资产为0时死亡
         # 在处理完当前代理的所有动作后暂时存入kill_list
         # 待到所有代理都处理完后再移除该代理
-        # TODO 应当确保所有代理能同时超时，否则就没有意义了
         if termination:
             self.kill_list.append(agent)
             
         # 每轮循环结束后：
+        # 1. 处理破产代理
         if self._agent_selector.is_last():
             # 仅从存活代理开始迭代
             # 管理死亡代理列表
@@ -301,7 +319,6 @@ class raw_env(AECEnv):
         # self.infos[agent].append(info)
 
         self._accumulate_rewards()
-        # 此处若truncations为true似乎会导致跳过Agent，使conversions的assert报错
         self._deads_step_first()
 
     def render(self, close=False):
@@ -321,8 +338,7 @@ class raw_env(AECEnv):
         """
         从TPG的GCN模型获得当前时间步的嵌入
         """
-        # return self.src.observe()
-        return self.tpg
+        return self.tpg.observe()
     
     def plot(self, agent):
         # show a plot of portfolio vs mean market performance

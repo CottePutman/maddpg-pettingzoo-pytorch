@@ -106,6 +106,13 @@ class DataGenerator(object):
     def observe(self):
         obs = self.data[:, self.step_count:self.step_count + self.window_length, :].copy()
         return obs
+    
+    def next_observe(self):
+        if self.step_count >= self.num_steps:
+            return self.observe()
+        
+        obs = self.data[:, self.step_count + 1:self.step_count + self.window_length + 1, :].copy()
+        return obs
 
 
 class PortfolioSim(object):
@@ -122,16 +129,26 @@ class PortfolioSim(object):
         self.time_cost = time_cost
         self.steps = steps
         self.infos = []
-        self.p0 = 1.0
+        self.p0 = 1.0   # Total portfolio value
 
     def step(self, w1, y1):
         """
         Step.
-        w1 - new action of portfolio weights - e.g. [0.1,0.9,0.0]
-        y1 - price relative vector also called return
-            e.g. [1.0, 0.9, 1.1]
-        Numbered equations are from https://arxiv.org/abs/1706.10059
+        
+        w1: new action of portfolio weights - e.g. [0.1,0.9,0.0] (weights for each asset)
+        y1: price relative vector also called return, e.g. [1.0, 0.9, 1.1] (price relative change for each asset)
+
+        Returns:
+        - rewards: A reward for each asset based on its performance
+        - info: Dictionary of portfolio information
+        - terminate: Boolean indicating if the portfolio is bankrupt
+        
+        Numbered equations are from [this paper](https://arxiv.org/abs/1706.10059).
         """
+        # The first asset in the portfolio is special, that it is the quoted currency, 
+        # referred to as the cash for the rest of the article.
+        # 动作的第一个dim实际表示不投资，把钱抓在手上
+        # 这也是为什么y1[0]永远是1，暂不考虑通胀
         assert w1.shape == y1.shape, 'w1 and y1 must have the same shape'
         assert y1[0] == 1.0, 'y1[0] must be 1'
 
@@ -147,9 +164,14 @@ class PortfolioSim(object):
 
         p1 = p1 * (1 - self.time_cost)  # we can add a cost to holding
 
-        rho1 = p1 / p0 - 1  # rate of returns
-        r1 = np.log((p1 + eps) / (p0 + eps))  # log rate of return
-        reward = r1 / self.steps * 1000.  # (22) average logarithmic accumulated return
+        rho1 = y1 - 1  # rate of returns for each asset
+        r1 = np.log((y1 + eps) / 1)  # log rate of return
+        
+        # Calculate portfolio-level reward, including transcation cost
+        portfolio_reward = np.log((p1 + eps) / (p0 + eps)) / self.steps * 1000.
+
+        rewards = r1 / self.steps * 1000.  # (22) average logarithmic accumulated return
+        
         # remember for next step
         self.p0 = p1
 
@@ -157,7 +179,7 @@ class PortfolioSim(object):
         terminate = p1 <= 0
 
         info = {
-            "reward": reward,
+            "reward": rewards,
             "log_return": r1,
             "portfolio_value": p1,
             "return": y1.mean(),
@@ -166,8 +188,8 @@ class PortfolioSim(object):
             "weights_std": w1.std(),
             "cost": mu1,
         }
-        self.infos.append(info)
-        return reward, info, terminate
+        # self.infos.append(info)
+        return portfolio_reward, rewards, info, terminate
 
     def reset(self):
         self.infos = []

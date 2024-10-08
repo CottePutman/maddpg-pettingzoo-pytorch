@@ -13,7 +13,7 @@ def get_history_and_abb():
     # TODO 暂时不加入Volume因为值太大
     history = history[:, :, :4]
     # TODO 调入config
-    target_stocks = ['AAPL', 'ATVI', 'CMCSA', 'COST']
+    target_stocks = ['AAPL', 'ATVI', 'CMCSA', 'COST', 'CSX', 'DISH', 'EA', 'EBAY']
     training_date_start = '2012-08-13'
     training_date_end = '2015-08-13'    # three years training data
     training_index_start = date_to_index(training_date_start)
