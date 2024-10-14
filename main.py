@@ -66,6 +66,7 @@ if __name__ == '__main__':
     # reward of each episode of each agent
     episode_rewards = {agent_id: np.zeros(episode_num) for agent_id in env.agents}
     for episode in range(episode_num):
+        # TODO 有时候observations会有nan，原因不明
         observations, infos = env.reset()
         agent_reward = {agent_id: 0 for agent_id in env.agents}  # agent reward of the current episode
         while env.agents:  # interact with the env for an episode

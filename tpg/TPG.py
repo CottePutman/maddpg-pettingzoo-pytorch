@@ -51,7 +51,7 @@ class TemporalPortfolioGraph:
         """
         self.num_asset = num_asset
         # 初始化边邻接矩阵
-        self.weighted_adj = torch.zeros((self.num_asset, self.num_asset), dtype=torch.float)
+        self.weighted_adj = torch.zeros((self.num_asset, self.num_asset), dtype=torch.float32)
 
         # 初始化节点信息，最终的self.x形状应为(num_assets, node_features)，例如(4, 5+1+1+5=12)
         # TODO Volume值过大的问题，暂时抛弃Volume
@@ -75,28 +75,26 @@ class TemporalPortfolioGraph:
 
     # TODO 大规模矩阵处理的问题，此处暂时以初始化全部边进行计算，此处复杂度为o(n^2)
     def _update_similarity(self, init=False, embedding:torch.tensor=None):
-        for i in range(0, self.num_asset):
-            for j in range(i, self.num_asset):
-                if i == j: continue
-                
-                # 基于论文中，设定λ为2
-                # 论文中的初始权重就是各个节点的特征，后续会被替换为GCN的嵌入
-                # 注意Heat_kernel的输入应为np.array
-                if init:
-                    e_i, e_j = self.x[i].numpy(), self.x[j].numpy()
-                else:
-                    if embedding is None:
-                        raise ValueError("Embedding mustn't be none for updating.")
-                    e_i = embedding[i].detach().numpy()
-                    e_j = embedding[j].detach().numpy()
-                
-                similarity = heat_kernel(e_i, e_j, lambda_param=2)
-                # 相似度低于下限时认为不存在边
-                if similarity < self.threshold: continue
-                
-                # 无向图，双向更新
-                self.weighted_adj[i, j] = similarity
-                self.weighted_adj[j, i] = similarity
+        # 基于论文中，设定λ为2
+        # 论文中的初始权重就是各个节点的特征，后续会被替换为GCN的嵌入
+        # 注意Heat_kernel的输入应为np.array
+        if init:
+            similarities = heat_kernel(self.x.numpy(), lambda_param=2, taylor_terms=7)
+        else:
+            if embedding is None:
+                raise ValueError("Embedding mustn't be none for updating.")
+            similarities = heat_kernel(embedding.detach().numpy(), lambda_param=2, taylor_terms=7)
+        
+        # 相似度低于下限时认为不存在边
+        # NOTE 注意np.where用法
+        similarities = np.where(similarities < self.threshold, 0, similarities)
+        
+        # 使用from_numpy()意味着两者共享内存，similarities发生转换时weighted_adj同步更新
+        # 使用tensor()是拷贝新值
+        # TODO 考虑该用哪个
+        # TODO 在和GCN传来传去的过程中对dtype太脆弱了
+        # NOTE 注意使用weighted_adj.data来规避直接对weighted_adj进行对象级的操作
+        self.weighted_adj.data.copy_(torch.from_numpy(similarities))
 
     def update(self, node_features: np.array):
         """
@@ -195,6 +193,7 @@ def example_run():
     tpg = TemporalPortfolioGraph(output_dim=10)
     tpg.reset(num_asset, [cur_price, next_price])
 
+    # 更新10步
     for _ in range(0, 10):
         _, truncation, _ = data_gen.step(True)
         if truncation: break
