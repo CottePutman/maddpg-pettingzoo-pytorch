@@ -9,10 +9,10 @@ environment:
   sample_start_date:
   act_type:
     all: continue
-  softmax: [0, 1]   # lower bound and upper bound of softmax
+  softmax: [0, 1]     # lower bound and upper bound of softmax
 
 training:
-  episode_num: 160
+  episode_num: 300
   episode_length: 25
   learn_interval: 100
   random_steps: 5000   # should not be too small (less than 1k) or the MADDPG.sample will malfunction

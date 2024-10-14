@@ -147,7 +147,7 @@ class PortfolioSim(object):
         """
         # The first asset in the portfolio is special, that it is the quoted currency, 
         # referred to as the cash for the rest of the article.
-        # 动作的第一个dim实际表示不投资，把钱抓在手上
+        # 动作w1的第一个dim实际表示不投资，把钱抓在手上
         # 这也是为什么y1[0]永远是1，暂不考虑通胀
         assert w1.shape == y1.shape, 'w1 and y1 must have the same shape'
         assert y1[0] == 1.0, 'y1[0] must be 1'
@@ -189,6 +189,13 @@ class PortfolioSim(object):
             "cost": mu1,
         }
         # self.infos.append(info)
+        
+        # TODO 惩罚风险行为
+        # 此处暂时以方差代替
+        variance = np.var(w1[1:])
+        if variance > 0.1:
+            portfolio_reward -= variance
+
         return portfolio_reward, rewards, info, terminate
 
     def reset(self):

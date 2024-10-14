@@ -51,3 +51,13 @@ def softmax_and_mapping(x: np.ndarray, bound: list):
     mapping = bound[0] + softmax * (bound[1] - bound[0])
     # 最终仅保留四位小数（万分之一）
     return np.round(mapping, decimals=4)
+
+
+def action_remapping(x: np.ndarray, bound: list):
+    assert(isinstance(bound, list) and len(bound)==2), "bound must be a list with the length of 2."
+    if bound[0] >= bound[1]:
+        raise ValueError(f"Bound upper bound {bound[1]} must be larger than lower bound {bound[0]}.")
+    
+    mapping = bound[0] + x * (bound[1] - bound[0])
+    # 最终仅保留四位小数（万分之一）
+    return np.round(mapping, decimals=4)

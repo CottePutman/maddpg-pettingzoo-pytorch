@@ -8,7 +8,7 @@ import torch.nn.functional as F
 
 from Agent import Agent
 from Buffer import Buffer
-from utils.common import softmax_and_mapping
+from utils.common import action_remapping
 
 
 def setup_logger(filename):
@@ -119,7 +119,8 @@ class MADDPG:
                 if self.softmax is None:
                     raise UserWarning(f"Agent {agent}'s actions are continuous but softmax is not set.")
                 # 对softmax进行规范化的步骤已经在get_env中进行处理过
-                actions[agent] = softmax_and_mapping(actions[agent], self.softmax)
+                # actions[agent] = softmax_and_mapping(actions[agent], self.softmax)
+                actions[agent] = action_remapping(actions[agent], self.softmax)
             else:
                 raise ValueError(f"Unsupported action space type: {self.act_type}")
             

@@ -13,17 +13,23 @@ class Agent:
 
     def __init__(self, obs_dim, act_dim, global_obs_dim, actor_lr, critic_lr, device, act_type='discrete'):
         self.device = device
-        self.actor = MLPNetwork(np.prod(obs_dim), np.prod(act_dim)).to(self.device)
 
         # critic input all the observations and actions
         # if there are 3 agents for example, the input for critic is (obs1, obs2, obs3, act1, act2, act3)
         # Critic应当学习代理所有的动作和观察值来生成一个预测的Q值
+        self.actor = MLPNetwork(np.prod(obs_dim), np.prod(act_dim)).to(self.device)
         self.critic = MLPNetwork(global_obs_dim, 1).to(self.device)
         self.actor_optimizer = Adam(self.actor.parameters(), lr=actor_lr)
         self.critic_optimizer = Adam(self.critic.parameters(), lr=critic_lr)
         self.target_actor = deepcopy(self.actor)
         self.target_critic = deepcopy(self.critic)
         self.act_type = act_type
+
+        # 退火算法
+        # 用于控制过于鬼屎的初始权重导致的类似one-hot的动作向量
+        self.softmax_temp = 2.0     # 从高温开始
+        self.min_temp = 1.0         # 降温
+        self.anneal_rate = 0.995    # Multiplicative factor for annealing
 
     @staticmethod
     def gumbel_softmax(self, logits, tau=1.0, eps=1e-20):
@@ -45,13 +51,13 @@ class Agent:
         logits = self.actor(obs)  # torch.Size([batch_size, action_size])
         # action = self.gumbel_softmax(logits)
         if self.act_type == 'discrete':
-            action = F.gumbel_softmax(logits, hard=True)
+            action = F.gumbel_softmax(logits / self.softmax_temp, hard=True)
         elif self.act_type == 'continue':
-            action = logits     # 若为连续型，则直接以最后一层的输出logits作为动作值
+            action = F.softmax(logits / self.softmax_temp, dim=-1)
 
         if model_out:
             return action, logits
-        return action
+        return action.round(decimals=4)
 
     def target_action(self, obs):
         # when calculate target critic value in MADDPG,
@@ -62,10 +68,11 @@ class Agent:
         logits = self.target_actor(obs)  # torch.Size([batch_size, action_size])
         # action = self.gumbel_softmax(logits)
         if self.act_type == 'discrete':
-            action = F.gumbel_softmax(logits, hard=True)
+            action = F.gumbel_softmax(logits / self.softmax_temp, hard=True)
         elif self.act_type == 'continue':
-            action = logits     # 若为连续型，则直接以最后一层的输出logits作为动作值
-        return action.squeeze(0).detach()
+            action = F.softmax(logits / self.softmax_temp, dim=-1)
+        
+        return action.squeeze(0).detach().round(decimals=4)
 
     def critic_value(self, state_list: List[Tensor], act_list: List[Tensor]):
         state_list = [s.to(self.device) for s in state_list]    # 移动state_list到GPU
@@ -85,12 +92,14 @@ class Agent:
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 0.5)
         self.actor_optimizer.step()
+        self.softmax_temp = max(self.softmax_temp * self.anneal_rate, self.min_temp)
 
     def update_critic(self, loss):
         self.critic_optimizer.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 0.5)
         self.critic_optimizer.step()
+        self.softmax_temp = max(self.softmax_temp * self.anneal_rate, self.min_temp)
 
 
 class MLPNetwork(nn.Module):

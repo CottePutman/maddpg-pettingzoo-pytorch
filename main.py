@@ -6,9 +6,11 @@ import numpy as np
 import torch
 from MADDPG import MADDPG
 from utils.env import get_env
+from utils.common import softmax_and_mapping
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = 'cpu'
 
 
 def load_config(path):
@@ -60,17 +62,25 @@ if __name__ == '__main__':
                     device)
 
     step = 0  # global step counter
-    # agent_num = env.num_agents
+
     # reward of each episode of each agent
     episode_rewards = {agent_id: np.zeros(episode_num) for agent_id in env.agents}
     for episode in range(episode_num):
         observations, infos = env.reset()
         agent_reward = {agent_id: 0 for agent_id in env.agents}  # agent reward of the current episode
         while env.agents:  # interact with the env for an episode
-            step += 1      
+            step += 1 
+            if step % random_steps == 0:
+                print("Current step: ", step)
+
             # 最开始是进行随机决策，到达一定步数之后才换为maddpg的决策  
             if step < random_steps:
+                # 直接使用pettingzoo的sample()是根据动作空间的维度来随机生成动作的
+                # 这会绕过env对动作的各种约束，就包括动作值总和为1的条件
                 actions = {agent: env.action_space(agent).sample() for agent in env.agents}
+                # 迫于无奈，在这里直接进行softmax
+                if env_name == 'pm':
+                    actions = {a: softmax_and_mapping(actions[a], [0,1]) for a in actions.keys()}
             else:
                 actions = maddpg.select_action(observations)
 
@@ -97,7 +107,7 @@ if __name__ == '__main__':
             for agent_id, r in agent_reward.items():  # record reward
                 message += f'{agent_id}: {r:>4f}; '
                 sum_reward += r
-            message += f'sum reward: {sum_reward}'
+            message += f'sum reward: {sum_reward}, step: {step}'
             print(message)
 
     maddpg.save(episode_rewards)  # save model

@@ -4,7 +4,7 @@ def taylor_expansion(x, terms=5):
     """
     Compute the Taylor series approximation of exp(x) up to a specified number of terms.
     
-    需要注意，泰勒展开式的前提是二者等价无穷小
+    需要注意，泰勒展开式的前提是在展开处（即0）二者等价无穷小
 
     Parameters
     ----------
@@ -58,11 +58,11 @@ def heat_kernel(e_i, e_j, lambda_param=1.0, taylor_terms=5):
     if exp_argument < -10:
         # If the argument is too negative, return a small similarity directly (since e^(-large) is ~0)
         return 0.0
-    
-    # Use Taylor series to approximate the exponential function
-    # TODO 泰勒展开式目前不太对
-    # similarity = taylor_expansion(exp_argument, terms=taylor_terms)
-    similarity = np.exp(exp_argument)
+    # 仅当x距离0较近时才使用泰勒展开，否则不能进行拟合
+    elif exp_argument < -2:
+        similarity = np.exp(exp_argument)
+    else:
+        similarity = taylor_expansion(exp_argument, terms=taylor_terms)
 
     # Ensure the similarity is between 0 and 1 (it can grow due to Taylor expansion)
     similarity = np.clip(similarity, 0, 1)
@@ -78,7 +78,7 @@ if __name__ == '__main__':
     
     # Compute similarity using Taylor expansion of heat kernel
     lambda_param = 1.0  # Set the time parameter λ
-    taylor_terms = 5  # Number of terms in the Taylor series
+    taylor_terms = 7  # Number of terms in the Taylor series
     similarity = heat_kernel(vector_i, vector_j, lambda_param, taylor_terms)
     
     print(f"Taylor-approximated similarity between vectors: {similarity:.4f}")

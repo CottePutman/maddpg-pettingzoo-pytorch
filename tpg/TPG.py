@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import cProfile
 from torch_geometric.data import Data
 from torch_geometric.utils import to_networkx
 
@@ -177,7 +178,7 @@ def visualize(h, color="blue", epoch=None, loss=None, accuracy=None):
     plt.show()
 
 
-if __name__ == "__main__":
+def example_run():
     target_history, target_stocks = get_history_and_abb()
     data_gen = DataGenerator(target_history, 
                              target_stocks, 
@@ -194,19 +195,26 @@ if __name__ == "__main__":
     tpg = TemporalPortfolioGraph(output_dim=10)
     tpg.reset(num_asset, [cur_price, next_price])
 
-    _ = data_gen.step(True)
-    cur_price = data_gen.observe()
-    act = np.random.rand(8, 1)
-    e_x = np.exp(act - np.max(act))
-    act = e_x / e_x.sum(axis=0)
-    rwd = np.random.rand(8, 1)
-    next_price = data_gen.next_observe()
-    tpg.update([cur_price, act, rwd, next_price])
+    for _ in range(0, 10):
+        _, truncation, _ = data_gen.step(True)
+        if truncation: break
+        
+        cur_price = data_gen.observe()
+        act = np.random.rand(num_asset+1, 1)
+        e_x = np.exp(act - np.max(act))
+        act = e_x / e_x.sum(axis=0)
+        rwd = np.random.rand(num_asset+1, 1)
+        next_price = data_gen.next_observe()
+        tpg.update([cur_price, act, rwd, next_price])
 
     # Build the PyG Data object
     data = tpg.get_pyg_object()
     print(data)
 
     # 转化为networkx对象以可视化
-    G = to_networkx(data, to_undirected=True)
-    visualize(G)
+    # G = to_networkx(data, to_undirected=True)
+    # visualize(G)
+
+
+if __name__ == '__main__':
+    cProfile.run('example_run()', 'profiling/output.prof')

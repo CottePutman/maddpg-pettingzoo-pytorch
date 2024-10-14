@@ -51,6 +51,7 @@ def env(render_mode=None, **kwargs):
 parallel_env = parallel_wrapper_fn(env)
 
 
+# TODO 奖励函数重新设计，惩罚代理过于风险的鸡蛋全装一个篮子里行为
 class raw_env(AECEnv):
     """
     An environment for financial portfolio management.
@@ -272,7 +273,6 @@ class raw_env(AECEnv):
         info['steps'] = self.src.step_count
         info['next_obs'] = ground_truth_obs
 
-        # TODO 还要为每个资产分配奖励！
         # 代理的总奖励等于所有资产的奖励之和（收益）
         self.rewards[agent] = pf_reward
 
@@ -280,7 +280,7 @@ class raw_env(AECEnv):
         # 更新TPG
         obs = self.src.observe()
         act = action
-        rwd = rewards
+        rwd = rewards       # 此处是每个资产各自产生的奖励值
         next_obs = self.src.next_observe()
         node_features = [obs, act, rwd, next_obs]
         self.tpg.update(node_features)
