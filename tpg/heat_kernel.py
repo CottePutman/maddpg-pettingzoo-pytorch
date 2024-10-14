@@ -24,14 +24,17 @@ def taylor_expansion(x, terms=5):
     return approx_exp
 
 
-def heat_kernel(vectors, lambda_param=1.0, taylor_terms=5):
+def heat_kernel(e_i, e_j, lambda_param=1.0, taylor_terms=5):
     """
-    计算输入向量两两间的相似度。
+    Compute the similarity between two vectors e_i and e_j using the heat kernel
+    approximation via Taylor series.
     
     Parameters
     ----------
-    vectors: np.array
-        The input list of vectors, 2-D matrix.
+    e_i : ndarray (128,)
+        Embedding vector or feature vector of asset i.
+    e_j : ndarray (128,)
+        Embedding vector or feature vector of asset j.
     lambda_param : float
         The time parameter λ for the heat kernel function.
     taylor_terms : int
@@ -39,44 +42,32 @@ def heat_kernel(vectors, lambda_param=1.0, taylor_terms=5):
     
     Returns
     -------
-    similarity : np.array
-        The similarity between assets, within 0 and 1.
+    similarity : float
+        The similarity between asset i and asset j, between 0 and 1.
     """
-    assert(len(vectors) >= 2), "Heat Kernel takes at least 2 vectors as input!"
-    assert(len(vectors.shape) == 2), "Heat Kernel only processes 2-D matrix inputs!"
+    # Calculate the squared Euclidean distance between the two vectors
+    distance_sq = np.sum((e_i - e_j)**2)
 
-    # The first value of shape indicates the total number of vectors.
-    num_v = vectors.shape[0]
-    similarities = np.zeros((num_v, num_v))
-    for i in range(0, num_v):
-        for j in range(i, num_v):
-            if j == i: continue
-            # Calculate the squared Euclidean distance between the two vectors
-            distance_sq = np.sum((vectors[i] - vectors[j])**2)
-
-            # Limit distance to prevent numerical issues with large values
-            distance_sq = np.clip(distance_sq, 0, 1e6)  # Cap the distance for stability
-            
-            # Calculate the argument for the exponential function
-            exp_argument = -distance_sq / lambda_param
-
-            # Ensure exp_argument is within a reasonable range to avoid overflow
-            if exp_argument < -10:
-                # If the argument is too negative, return a small similarity directly (since e^(-large) is ~0)
-                similarity = 0
-            # 仅当x距离0较近时才使用泰勒展开，否则不能进行拟合
-            elif exp_argument < -2:
-                similarity = np.exp(exp_argument)
-            else:
-                similarity = taylor_expansion(exp_argument, terms=taylor_terms)
-
-            # Ensure the similarity is between 0 and 1 (it can grow due to Taylor expansion)
-            similarity = np.clip(similarity, 0, 1)
-            
-            similarities[i][j] = similarity
-            similarities[j][i] = similarity
+    # Limit distance to prevent numerical issues with large values
+    distance_sq = np.clip(distance_sq, 0, 1e6)  # Cap the distance for stability
     
-    return similarities
+    # Calculate the argument for the exponential function
+    exp_argument = -distance_sq / lambda_param
+
+    # Ensure exp_argument is within a reasonable range to avoid overflow
+    if exp_argument < -10:
+        # If the argument is too negative, return a small similarity directly (since e^(-large) is ~0)
+        return 0.0
+    # 仅当x距离0较近时才使用泰勒展开，否则不能进行拟合
+    elif exp_argument < -2:
+        similarity = np.exp(exp_argument)
+    else:
+        similarity = taylor_expansion(exp_argument, terms=taylor_terms)
+
+    # Ensure the similarity is between 0 and 1 (it can grow due to Taylor expansion)
+    similarity = np.clip(similarity, 0, 1)
+    
+    return similarity
 
 
 # Example usage

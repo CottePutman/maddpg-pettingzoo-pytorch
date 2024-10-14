@@ -74,27 +74,31 @@ class TemporalPortfolioGraph:
         self._update_similarity(init=True)
 
     # TODO 大规模矩阵处理的问题，此处暂时以初始化全部边进行计算，此处复杂度为o(n^2)
+    # NOTE 憋瞎几把优化了，越优化越他妈慢。他循环就在update_similarity内部干得好好地你动他干什么，还用np.where和.copy_增加了新的内存开销
+    # NOTE 在_update_similarity循环相比于在heat_kernel内循环10次的成绩，从67ms提升到了58ms
     def _update_similarity(self, init=False, embedding:torch.tensor=None):
-        # 基于论文中，设定λ为2
-        # 论文中的初始权重就是各个节点的特征，后续会被替换为GCN的嵌入
-        # 注意Heat_kernel的输入应为np.array
-        if init:
-            similarities = heat_kernel(self.x.numpy(), lambda_param=2, taylor_terms=7)
-        else:
-            if embedding is None:
-                raise ValueError("Embedding mustn't be none for updating.")
-            similarities = heat_kernel(embedding.detach().numpy(), lambda_param=2, taylor_terms=7)
-        
-        # 相似度低于下限时认为不存在边
-        # NOTE 注意np.where用法
-        similarities = np.where(similarities < self.threshold, 0, similarities)
-        
-        # 使用from_numpy()意味着两者共享内存，similarities发生转换时weighted_adj同步更新
-        # 使用tensor()是拷贝新值
-        # TODO 考虑该用哪个
-        # TODO 在和GCN传来传去的过程中对dtype太脆弱了
-        # NOTE 注意使用weighted_adj.data来规避直接对weighted_adj进行对象级的操作
-        self.weighted_adj.data.copy_(torch.from_numpy(similarities))
+        for i in range(0, self.num_asset):
+            for j in range(i, self.num_asset):
+                if i == j: continue
+                
+                # 基于论文中，设定λ为2
+                # 论文中的初始权重就是各个节点的特征，后续会被替换为GCN的嵌入
+                # 注意Heat_kernel的输入应为np.array
+                if init:
+                    e_i, e_j = self.x[i].numpy(), self.x[j].numpy()
+                else:
+                    if embedding is None:
+                        raise ValueError("Embedding mustn't be none for updating.")
+                    e_i = embedding[i].detach().numpy()
+                    e_j = embedding[j].detach().numpy()
+                
+                similarity = heat_kernel(e_i, e_j, lambda_param=2)
+                # 相似度低于下限时认为不存在边
+                if similarity < self.threshold: continue
+                
+                # 无向图，双向更新
+                self.weighted_adj[i, j] = similarity
+                self.weighted_adj[j, i] = similarity
 
     def update(self, node_features: np.array):
         """
